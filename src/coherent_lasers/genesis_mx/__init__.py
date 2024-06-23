@@ -2,7 +2,8 @@
 Driver for Coherent Genesis MX series lasers.
 
 Setup:
-- If using the HOPSDevice class, ensure the CohrHOPS DLL files are in the 'dll' directory within the 'common/hops' package.
+- If using the HOPSDevice class, ensure the CohrHOPS DLL files are in the 'dll' directory within the 'common/hops'
+package.
 
 Classes:
 - GenesisMX: Driver for Coherent Genesis MX series lasers.

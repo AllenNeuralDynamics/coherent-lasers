@@ -20,13 +20,13 @@ class GenesisMX(HOPSDevice):
     def enable(self):
         """Enable the laser."""
         if self.is_key_switch_closed:
-            self.send_write_command(WriteCmds.SET_SOFTWARE_LOCK, 1)
+            self.send_write_command(WriteCmds.SET_SOFTWARE_SWITCH, 1)
         else:
-            raise ValueError(f'Key switch is not closed for laser {self.id}')
+            raise ValueError(f'Key switch is not closed for laser {self.serial}')
 
     def disable(self):
         """Disable the laser."""
-        self.send_write_command(WriteCmds.SET_SOFTWARE_LOCK, 0)
+        self.send_write_command(WriteCmds.SET_SOFTWARE_SWITCH, 0)
 
     @property
     def mode(self):
@@ -236,7 +236,7 @@ class GenesisMX(HOPSDevice):
         """
         return self.send_read_command(ReadCmds.REMOTE_CONTROL_STATUS) == 1
 
-    @remote_control.setter
+    @remote_control_enable.setter
     def remote_control_enable(self, value: bool):
         """Set the remote control status of the laser."""
         self.send_write_command(WriteCmds.SET_REMOTE_CONTROL, 1 if value else 0)

@@ -83,4 +83,3 @@ class Alarms(Enum):
             if code & fault.value[0]:
                 faults.append(fault)
         return faults if faults else [cls.NO_FAULT]
-

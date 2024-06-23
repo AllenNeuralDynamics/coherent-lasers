@@ -37,7 +37,7 @@ After placing the DLL files in the `dll` folder, the utilities in `hops_device.p
 You can now use the classes and functions defined in `hops_device.py` as follows:
 
 ```python
-from common.hops import HOPSDevice
+from coherent_lasers.common.hops import HOPSDevice
 
 device = HOPSDevice(serial='123456')
 device.initialize()

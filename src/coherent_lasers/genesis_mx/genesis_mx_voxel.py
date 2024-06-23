@@ -7,7 +7,8 @@ INIT_POWER_MW = 10.0
 
 class GenesisMXVoxelLaser(BaseLaser):
     def __init__(self, id: str, conn: str):
-        super.__init(self, id)
+        super().__init__(id)
+        self._conn = conn
         self._inst = GenesisMX(serial=conn)
         try:
             assert self._inst.head['serial'] == conn
@@ -18,10 +19,17 @@ class GenesisMXVoxelLaser(BaseLaser):
         self.power_mw = INIT_POWER_MW
 
     def enable(self):
+        if self._inst is None:
+            self._inst = GenesisMX(serial=self._conn)
         self._inst.enable()
 
     def disable(self):
         self._inst.disable()
+
+    def close(self):
+        self.disable()
+        if not self._inst.is_enabled:
+            self._inst = None
 
     @property
     def power_mw(self):

@@ -131,8 +131,8 @@ class HOPSDevice:
 
     def __init__(self, serial: str):
         self._initialize_manager()
-        print(self._manager)
         self.serial = serial
+        print(self._manager)
         self.handle = self._get_handle()
 
     def _get_handle(self):
