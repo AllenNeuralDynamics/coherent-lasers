@@ -9,7 +9,7 @@ LASER1 = {
 }
 
 LASER2 = {
-    "id": "test_laser",
+    "id": "test_laser2",
     "conn": "J687424BP914"
 }
 
@@ -29,14 +29,14 @@ def laser2():
 
 
 def test_power_mw(laser1):
-    laser1.power_mw = 100.0
+    laser1.power_setpoint_mw = 100.0
     assert laser1.power_setpoint_mw == pytest.approx(100.0, rel=1e-2)
     sleep(1)
     assert laser1.power_mw == pytest.approx(100.0, rel=1e-2)
 
 
 def test_disable(laser1, laser2):
-    laser1.power_mw, laser2.power_mw = 500.0, 500.0
+    laser1.power_setpoint_mw, laser2.power_setpoint_mw = 500.0, 500.0
     # disable 1 laser and check difference
     laser1.disable()
     sleep(1)

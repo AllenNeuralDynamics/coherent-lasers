@@ -16,7 +16,7 @@ class GenesisMXVoxelLaser(BaseLaser):
             raise ValueError(f'Error initializing laser {self.id}, serial number mismatch')
         self._inst.mode = OperationModes.PHOTO
         self.enable()
-        self.power_mw = INIT_POWER_MW
+        self.power_setpoint_mw = INIT_POWER_MW
 
     def enable(self):
         if self._inst is None:
@@ -35,30 +35,16 @@ class GenesisMXVoxelLaser(BaseLaser):
     def power_mw(self):
         return self._inst.power_mw
 
-    @power_mw.setter
-    def power_mw(self, value: float):
-        self._inst.power_mw = value
-
     @property
     def power_setpoint_mw(self):
         return self._inst.power_setpoint_mw
 
+    @power_setpoint_mw.setter
+    def power_setpoint_mw(self, value: float):
+        self._inst.power_setpoint_mw = value
+
     @property
-    def signal_temperature_c(self) -> float:
+    def temperature_c(self) -> float:
         """The temperature of the laser in degrees Celsius."""
         return self._inst.temperature_c
 
-    @property
-    def modulation_mode(self) -> str:
-        return ''
-
-    @modulation_mode.setter
-    def modulation_mode(self, value: str):
-        pass
-
-    def status(self):
-        """Get the status of the laser."""
-        pass
-
-    def cdrh(self):
-        pass
