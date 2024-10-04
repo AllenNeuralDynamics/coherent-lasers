@@ -4,78 +4,83 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "coherent_lasers"
-description = "Generated from aind-library-template"
-license = {text = "MIT"}
+description = "A python package for controlling coherent lasers"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 authors = [
-    {name = "Walter Mwaniki", email = "walter.mwaniki@alleninstitute.org"},
+    { name = "Walter Mwaniki", email = "walter.mwaniki@alleninstitute.org" },
 ]
 classifiers = [
-    "Programming Language :: Python :: 3"
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Operating System :: OS Independent",
 ]
 readme = "README.md"
+keywords = ["laser", "coherent", "drivers", "hardware control"]
 dynamic = ["version"]
 
-dependencies = [
-    "voxel >= 0.0.0",
-    "pytest >= 8.2.1",
-]
+dependencies = ["voxel >= 0.0.0"]
 
 [project.optional-dependencies]
 dev = [
+    'pytest',
     'black',
     'coverage',
     'flake8',
     'interrogate',
     'isort',
     'Sphinx',
-    'furo'
+    'furo',
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["coherent_lasers"]
+package-dir = { "" = "src" }
+include-package-data = true
+package-data = { "coherent_lasers.common.hops" = ["dll/*.dll"] }
 
 [tool.setuptools.dynamic]
-version = {attr = "coherent_lasers.__version__"}
+version = { attr = "coherent_lasers.__version__" }
 
 [tool.black]
-line-length = 79
-target_version = ['py36']
+line-length = 120
+target-version = ["py37"]
 exclude = '''
-
 (
-  /(
-      \.eggs         # exclude a few common directories in the
-    | \.git          # root of the project
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | build
-    | dist
-  )/
-  | .gitignore
+    /(
+        \.eggs         # exclude a few common directories in the
+      | \.git          # root of the project
+      | \.hg
+      | \.mypy_cache
+      | \.tox
+      | \.venv
+      | _build
+      | build
+      | dist
+    )/
+    | .gitignore
 )
 '''
 
 [tool.coverage.run]
 omit = ["*__init__*"]
-source = ["coherent_lasers", "tests"]
+source = ["src", "tests"]
 
 [tool.coverage.report]
 exclude_lines = [
     "if __name__ == .__main__.:",
     "from",
     "import",
-    "pragma: no cover"
+    "pragma: no cover",
 ]
 fail_under = 100
 
 [tool.isort]
-line_length = 79
+line_length = 120
 profile = "black"
 
 [tool.interrogate]
 exclude = ["setup.py", "docs", "build"]
-fail-under = 100
+fail_under = 100

@@ -1,5 +1,5 @@
-from commands import ReadCmds, WriteCmds, OperationModes, Alarms
-from ..common.hops import HOPSDevice
+from coherent_lasers.genesis_mx.commands import ReadCmds, WriteCmds, OperationModes, Alarms
+from coherent_lasers.common import HOPSDevice
 
 
 class GenesisMX(HOPSDevice):

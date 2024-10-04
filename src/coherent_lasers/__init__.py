@@ -1,4 +1,3 @@
-"""Init package"""
-__version__ = "0.0.0"
+"""Coherent lasers."""
 
-from .genesis_mx import *
+__version__ = "0.0.1"

@@ -13,14 +13,18 @@ Setup:
 
 from .hops_device import HOPSDevice
 
-__all__ = ['HOPSDevice']
+__all__ = ["HOPSDevice"]
 
-__version__ = '0.0.1'
+__version__ = "0.0.1"
 
 import os
 
+# Ensure is windows
+if os.name != "nt":
+    raise OSError("HOPSDevice is only supported on Windows.")
+
 # Ensure the DLL directory exists
-DLL_DIR = os.path.join(os.path.dirname(__file__), 'dll')
+DLL_DIR = os.path.join(os.path.dirname(__file__), "dll")
 if not os.path.exists(DLL_DIR):
     os.makedirs(DLL_DIR)
 

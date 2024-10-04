@@ -1,5 +1,5 @@
-from .genesis_mx import GenesisMX
-from .commands import OperationModes
+from coherent_lasers.genesis_mx.driver import GenesisMX
+from coherent_lasers.genesis_mx.commands import OperationModes
 from voxel.devices.lasers import BaseLaser
 
 INIT_POWER_MW = 10.0
@@ -11,9 +11,9 @@ class GenesisMXVoxelLaser(BaseLaser):
         self._conn = conn
         self._inst = GenesisMX(serial=conn)
         try:
-            assert self._inst.head['serial'] == conn
+            assert self._inst.head["serial"] == conn
         except AssertionError:
-            raise ValueError(f'Error initializing laser {self.id}, serial number mismatch')
+            raise ValueError(f"Error initializing laser {self.id}, serial number mismatch")
         self._inst.mode = OperationModes.PHOTO
         self.enable()
         self.power_setpoint_mw = INIT_POWER_MW
@@ -47,4 +47,3 @@ class GenesisMXVoxelLaser(BaseLaser):
     def temperature_c(self) -> float:
         """The temperature of the laser in degrees Celsius."""
         return self._inst.temperature_c
-
