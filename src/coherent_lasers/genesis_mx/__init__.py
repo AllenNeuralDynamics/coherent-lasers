@@ -17,7 +17,7 @@ Classes:
 from .commands import (
     ReadCmds as GenesisMXReadCmds,
     WriteCmds as GenesisMXWriteCmds,
-    OperationModes as GenesisMXOperationModes,
+    OperationMode as GenesisMXOperationModes,
     Alarms as GenesisMXAlarms,
 )
 from .driver import GenesisMX

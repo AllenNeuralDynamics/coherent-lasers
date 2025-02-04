@@ -1,0 +1,70 @@
+:root {
+    --zinc-50: hsl(0, 0%, 98%);
+    --zinc-100: hsl(240, 5%, 96%);
+    --zinc-200: hsl(240, 6%, 90%);
+    --zinc-300: hsl(240, 5%, 84%);
+    --zinc-400: hsl(240, 5%, 65%);
+    --zinc-500: hsl(240, 4%, 46%);
+    --zinc-600: hsl(240, 5%, 34%);
+    --zinc-700: hsl(240, 5%, 26%);
+    --zinc-800: hsl(240, 4%, 16%);
+    --zinc-900: hsl(240, 6%, 10%);
+    --zinc-950: hsl(240, 10%, 4%);
+}
+
+
+:root {
+    --teal-50: hsl(166, 76%, 97%);
+    --teal-100: hsl(167, 85%, 89%);
+    --teal-200: hsl(168, 84%, 78%);
+    --teal-300: hsl(171, 77%, 64%);
+    --teal-400: hsl(172, 66%, 50%);
+    --teal-500: hsl(173, 80%, 40%);
+    --teal-600: hsl(175, 84%, 32%);
+    --teal-700: hsl(175, 77%, 26%);
+    --teal-800: hsl(176, 69%, 22%);
+    --teal-900: hsl(176, 61%, 19%);
+    --teal-950: hsl(179, 84%, 10%);
+}
+
+:root {
+    --yellow-400: hsl(48, 96%, 53%);
+}
+
+:root {
+    --rose-50: hsl(356, 100%, 97%);
+    --rose-100: hsl(356, 100%, 95%);
+    --rose-200: hsl(353, 96%, 90%);
+    --rose-300: hsl(353, 96%, 82%);
+    --rose-400: hsl(351, 95%, 71%);
+    --rose-500: hsl(350, 89%, 60%);
+    --rose-600: hsl(347, 77%, 50%);
+    --rose-700: hsl(345, 83%, 41%);
+    --rose-800: hsl(343, 80%, 35%);
+    --rose-900: hsl(342, 75%, 30%);
+    --rose-950: hsl(343, 88%, 16%);
+}
+
+:root {
+    --emerald-500: hsl(160, 84%, 39%);
+    --emerald-600: hsl(161, 94%, 30%);
+}
+
+:root {
+    --green-500: hsl(142, 71%, 45%);
+}
+
+@for $i from 100 through 950 {
+    .zinc-#{$i} {
+        color: var(--zinc-#{$i});
+    }
+
+    .bg-zinc-#{$i} {
+        background-color: var(--zinc-#{$i});
+    }
+
+    .border-zinc-#{$i} {
+        border: 1px solid transparent;
+        border-color: var(--zinc-#{$i});
+    }
+}

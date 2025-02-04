@@ -95,7 +95,7 @@ class HOPSManager:
 
     def send_device_command(self, serial: str, command: str) -> str:
         handle = next(handle for handle, ser in self._handles.items() if ser == serial)
-        response: str = C.create_string_buffer(MAX_STRLEN)
+        response: C.Array[C.c_char] = C.create_string_buffer(MAX_STRLEN)
         res = self._send_command(handle, command.encode(), response)
         if res != COHRHOPS_OK:
             raise HOPSException(f"Error sending command to device {serial}", res)
@@ -134,7 +134,14 @@ class HOPSManager:
         self._get_dll_version.restype = int
 
         self._check_for_devices = self._dll.CohrHOPS_CheckForDevices
-        self._check_for_devices.argtypes = [LPULPTR, LPDWORD, LPULPTR, LPDWORD, LPULPTR, LPDWORD]
+        self._check_for_devices.argtypes = [
+            LPULPTR,
+            LPDWORD,
+            LPULPTR,
+            LPDWORD,
+            LPULPTR,
+            LPDWORD,
+        ]
         self._check_for_devices.restype = int
 
     def _fetch_device_connection_info(self):
@@ -149,11 +156,16 @@ class HOPSManager:
         )
         if res != COHRHOPS_OK:
             raise HOPSException(f"Error checking for devices: {res}")
-        self._log.debug(f"Updated devices info. Connected: {self._number_of_devices_connected.value}")
+        self._log.debug(
+            f"Updated devices info. Connected: {self._number_of_devices_connected.value}"
+        )
 
     def _activate_all_devices(self):
         self._log.debug("Activating all devices...")
-        connected_handles = {self._devices_connected[i] for i in range(self._number_of_devices_connected.value)}
+        connected_handles = {
+            self._devices_connected[i]
+            for i in range(self._number_of_devices_connected.value)
+        }
         for handle in connected_handles:
             self._initialize_device_by_handle(handle)
             ser = self._get_device_serial(handle)
@@ -164,14 +176,21 @@ class HOPSManager:
 
     def _validate_active_devices(self):
         self._log.debug("Validating active devices...")
-        connected_handles = {self._devices_connected[i] for i in range(self._number_of_devices_connected.value)}
+        connected_handles = {
+            self._devices_connected[i]
+            for i in range(self._number_of_devices_connected.value)
+        }
         for handle in connected_handles:
             self._initialize_device_by_handle(handle)
             ser = self._get_device_serial(handle)
             self._handles[handle] = ser
             if ser not in self._active_serials:
                 self._close_device_by_handle(handle)
-        self._handles = {handle: ser for handle, ser in self._handles.items() if ser in self._active_serials}
+        self._handles = {
+            handle: ser
+            for handle, ser in self._handles.items()
+            if ser in self._active_serials
+        }
         self._log.debug("Registered Handles: " + str(self._handles))
         self._log.debug("Active Devices: " + str(self._active_serials))
 

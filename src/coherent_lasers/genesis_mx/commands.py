@@ -1,18 +1,22 @@
 """Coherent Genesis MX commands."""
+
 from enum import Enum
 
 
 class ReadCmds(Enum):
     """Genesis MX Read Commands"""
-    CURRENT_MODE = "?CMODE"         # Read the current mode of the laser: 0 = Photo, 1 = Current
-    FAULT_CODE = "?FF"              # Read the fault code of the laser
-    POWER = "?P"                    # Read the current power of the laser
-    POWER_SETPOINT = "?PCMD"        # Read the power setpoint of the laser
-    LDD_CURRENT = "?C"              # Read the current of the laser diode driver
-    LDD_CURRENT_LIMIT = "?CLIM"     # Read the current limit of the laser diode driver
+
+    CURRENT_MODE = (
+        "?CMODE"  # Read the current mode of the laser: 0 = Photo, 1 = Current
+    )
+    FAULT_CODE = "?FF"  # Read the fault code of the laser
+    POWER = "?P"  # Read the current power of the laser
+    POWER_SETPOINT = "?PCMD"  # Read the power setpoint of the laser
+    LDD_CURRENT = "?C"  # Read the current of the laser diode driver
+    LDD_CURRENT_LIMIT = "?CLIM"  # Read the current limit of the laser diode driver
 
     # Temperature and Voltage Signals
-    MAIN_TEMPERATURE = "?TMAIN"     # Read the main temperature of the laser
+    MAIN_TEMPERATURE = "?TMAIN"  # Read the main temperature of the laser
     SHG_TEMPERATURE = "?TSHG"
     BRF_TEMPERATURE = "?TBRF"
     ETALON_TEMPERATURE = "?TETA"
@@ -43,6 +47,7 @@ class ReadCmds(Enum):
 
 class WriteCmds(Enum):
     """Genesis MX Write Commands"""
+
     SET_POWER = "PCMD="
     SET_NONVOLATILE_POWER = "PMEM="
     SET_MODE = "CMODECMD="
@@ -51,7 +56,7 @@ class WriteCmds(Enum):
     SET_SOFTWARE_SWITCH = "KSWCMD="
 
 
-class OperationModes(Enum):
+class OperationMode(Enum):
     PHOTO = 0
     CURRENT = 1
 

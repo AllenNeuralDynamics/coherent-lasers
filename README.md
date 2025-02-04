@@ -70,3 +70,29 @@ Alternatively, run the following command to interact with connected Genesis MX l
 ```bash
 genesis-mx
 ```
+
+## Getting Started with the Web GUI
+
+> **Note:** The web GUI is a work in progress and is not fully functional yet.
+
+```bash
+cd webgui
+```
+
+> **Note:** You can also use `npm` or `yarn` in place of `pnpm` to install the dependencies and build the project.
+
+```bash
+pnpm i
+```
+
+```bash
+pnpm run build
+```
+
+```bash
+cd ../src/coherent_lasers/webgui
+```
+
+```bash
+uv run fastapi dev app.py
+```

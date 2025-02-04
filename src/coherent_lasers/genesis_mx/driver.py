@@ -1,7 +1,12 @@
 from dataclasses import dataclass
 from enum import StrEnum
 import logging
-from coherent_lasers.genesis_mx.commands import ReadCmds, WriteCmds, OperationModes, Alarms
+from coherent_lasers.genesis_mx.commands import (
+    ReadCmds,
+    WriteCmds,
+    OperationMode,
+    Alarms,
+)
 from coherent_lasers.hops import HOPSDevice
 from ..hops.lib import HOPSException
 
@@ -53,16 +58,20 @@ class GenesisMXEnableLoop:
         return self.interlock and self.key and not self.software
 
     def __repr__(self) -> str:
-        return f"Software: {self.software}, Interlock: {self.interlock}, Key: {self.key}"
+        return (
+            f"Software: {self.software}, Interlock: {self.interlock}, Key: {self.key}"
+        )
 
 
 class GenesisMX:
-    def __init__(self, serial: str, logger: logging.Logger = None) -> None:
+    def __init__(self, serial: str, logger: logging.Logger | None = None) -> None:
         self.log = logger if logger else logging.getLogger(f"{__name__}.{serial}")
         self.serial = serial
         self.hops = HOPSDevice(self.serial)
         if not self.hops:
-            raise ValueError(f"Failed to initialize laser with serial number {self.serial}")
+            raise ValueError(
+                f"Failed to initialize laser with serial number {self.serial}"
+            )
         self.disable()
         self._unit_factor = 1
         if self.head.type == GenesisMXHeadType.MINIX:
@@ -70,16 +79,18 @@ class GenesisMX:
         try:
             self.remote_control_enable = True
         except HOPSException:
-            self.log.debug("Failed to enable remote control. Remote control may be disabled.")
+            self.log.debug(
+                "Failed to enable remote control. Remote control may be disabled."
+            )
 
     @property
-    def mode(self) -> OperationModes:
+    def mode(self) -> OperationMode:
         """Get the current mode of the laser: current mode or photomode."""
         mode_value = self.send_read_command(ReadCmds.CURRENT_MODE)
-        return OperationModes(int(mode_value))
+        return OperationMode(int(mode_value))
 
     @mode.setter
-    def mode(self, value: OperationModes) -> None:
+    def mode(self, value: OperationMode) -> None:
         """Set the mode of the laser."""
         self.send_write_command(WriteCmds.SET_MODE, value.value)
 
@@ -94,12 +105,16 @@ class GenesisMX:
         value = value / self._unit_factor
         self.send_write_command(WriteCmds.SET_POWER, value)
         if not self.enable_loop.enabled:
-            self.log.warning(f"Attempting to set power to {value} mW while laser is disabled.")
+            self.log.warning(
+                f"Attempting to set power to {value} mW while laser is disabled."
+            )
 
     @property
     def power_setpoint_mw(self) -> float:
         """Get the current power setpoint of the laser."""
-        return float(self.send_read_command(ReadCmds.POWER_SETPOINT)) * self._unit_factor
+        return (
+            float(self.send_read_command(ReadCmds.POWER_SETPOINT)) * self._unit_factor
+        )
 
     @property
     def ldd_current(self) -> float:
@@ -268,12 +283,11 @@ class GenesisMX:
 
     # Commands
 
-    def send_write_command(self, cmd: WriteCmds, value: float = None) -> None:
+    def send_write_command(
+        self, cmd: WriteCmds, new_value: float | None = None
+    ) -> None:
         """Send a write command to the laser."""
-        if value is not None:
-            self.hops.send_command(f"{cmd.value}{value}")
-        else:
-            self.send_command(cmd.value)
+        self.hops.send_command(f"{cmd.value}{new_value}")
 
     def send_read_command(self, cmd: ReadCmds) -> str:
         """Send a read command to the laser."""
@@ -289,5 +303,5 @@ class GenesisMX:
         return float(self.send_read_command(cmd).strip())
 
     def close(self) -> None:
-        self.power_setpoint_mw = 0
+        self.power_mw = 0.0
         self.hops.close()

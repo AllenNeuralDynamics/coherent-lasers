@@ -1,0 +1,88 @@
+@use 'resets';
+@use 'colors';
+@use 'typography';
+
+
+
+/* Global styles */
+body {
+    font-family: 'Open Sans Variable', Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+
+}
+
+// html,
+// body,
+// #app {
+//     width: 100dvw;
+//     height: 100dvh;
+//     overflow: hidden;
+// }
+
+:root {
+    line-height: 1.5;
+    font-weight: 400;
+
+    color-scheme: dark;
+    background-color: var(--zinc-950);
+    color: var(--zinc-100);
+
+
+    // ::-webkit-scrollbar {
+    //     width: 8px;
+    //     height: 8px;
+    // }
+
+    // ::-webkit-scrollbar-track {
+    //     background: var(--zinc-900);
+    // }
+
+    // ::-webkit-scrollbar-thumb {
+    //     background-color: var(--zinc-700);
+    //     border-radius: 1rem;
+    // }
+
+    main,
+    div {
+        scrollbar-width: thin;
+        scrollbar-color: var(--zinc-700) var(--zinc-900);
+    }
+}
+
+
+// @media (prefers-color-scheme: light) {
+//     :root {
+//         color: var(--zinc-900);
+//         background-color: var(--zinc-100);
+//     }
+// }
+
+
+.daq-chart {
+    // border: 1px solid chartreuse;
+
+    .axes {
+        .grid {
+            path {
+                stroke: var(--zinc-700);
+                stroke-width: 0.25;
+            }
+
+            .tick {
+                line {
+                    stroke-opacity: 1;
+                    // stroke: var(--zinc-800);
+                    stroke-width: 0.25;
+                    // stroke-dasharray: 0.25rem 0.25rem;
+                }
+
+                text {
+                    color: var(--zinc-400);
+                    font-family: monospace;
+                    font-size: 0.75rem;
+                    font-weight: 100;
+                }
+            }
+        }
+    }
+
+}

@@ -1,12 +1,8 @@
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "coherent_lasers"
 description = "A python package for controlling coherent lasers"
 license = { text = "MIT" }
-requires-python = ">=3.10"
+requires-python = ">=3.10, < 3.12"
 authors = [
     { name = "Walter Mwaniki", email = "walter.mwaniki@alleninstitute.org" },
 ]
@@ -15,10 +11,23 @@ readme = "README.md"
 keywords = ["laser", "coherent", "drivers", "hardware control"]
 dynamic = ["version"]
 
-dependencies = []
+
+[build-system]
+requires = ["setuptools>=42", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "click>=8.1.7"
+]
 
 [project.optional-dependencies]
-voxel = ["voxel @ git+https://github.com/AllenNeuralDynamics/voxel.git"]
+# voxel = ['voxel']
+gui = [
+    "fastapi[standard]",
+ "uvicorn",
+]
 dev = [
     'pytest',
     'black',
@@ -29,10 +38,16 @@ dev = [
     'Sphinx',
     'furo',
 ]
+build = ["setuptools>=42", "setuptools-scm"]
+
+[tool.uv.sources]
+voxel = { git = "https://github.com/AllenNeuralDynamics/voxel" }
 
 [project.scripts]
 cohrhops = "coherent_lasers.hops.app:cli"
 genesis-mx = "coherent_lasers.genesis_mx.app:cli"
+genesismx = "coherent_lasers.webapp.app:run"
+
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -40,7 +55,8 @@ include-package-data = true
 py-modules = []
 
 [tool.setuptools.package-data]
-"coherent_lasers.common.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]
+"coherent_lasers.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]
+"coherent_lasers.webgui" = ["frontend/build/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

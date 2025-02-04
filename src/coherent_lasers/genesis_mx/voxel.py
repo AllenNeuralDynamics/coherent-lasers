@@ -1,6 +1,7 @@
 from coherent_lasers.genesis_mx.driver import GenesisMX
-from coherent_lasers.genesis_mx.commands import OperationModes
-from voxel.devices.laser import BaseLaser
+from coherent_lasers.genesis_mx.commands import OperationMode
+from voxel.devices.laser.base import BaseLaser
+
 
 INIT_POWER_MW = 10.0
 
@@ -12,9 +13,11 @@ class GenesisMXVoxelLaser(BaseLaser):
         try:
             self._inst = GenesisMX(serial=conn)
             assert self._inst.head.serial == conn
-            self._inst.mode = OperationModes.PHOTO
+            self._inst.mode = OperationMode.PHOTO
         except AssertionError:
-            raise ValueError(f"Error initializing laser {self.id}, serial number mismatch")
+            raise ValueError(
+                f"Error initializing laser {self.id}, serial number mismatch"
+            )
         self.enable()
         self.power_setpoint_mw = INIT_POWER_MW
         self._wavelength = wavelength
