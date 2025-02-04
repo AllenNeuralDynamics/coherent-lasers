@@ -23,11 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# voxel = ['voxel']
-gui = [
-    "fastapi[standard]",
- "uvicorn",
-]
+gui = ["fastapi[standard]", "uvicorn"]
 dev = [
     'pytest',
     'black',
@@ -39,9 +35,6 @@ dev = [
     'furo',
 ]
 build = ["setuptools>=42", "setuptools-scm"]
-
-[tool.uv.sources]
-voxel = { git = "https://github.com/AllenNeuralDynamics/voxel" }
 
 [project.scripts]
 cohrhops = "coherent_lasers.hops.app:cli"
