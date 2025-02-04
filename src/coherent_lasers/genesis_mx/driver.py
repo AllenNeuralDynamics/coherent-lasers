@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 import logging
+import random
 from coherent_lasers.genesis_mx.commands import (
     ReadCmds,
     WriteCmds,
@@ -305,3 +306,145 @@ class GenesisMX:
     def close(self) -> None:
         self.power_mw = 0.0
         self.hops.close()
+
+
+class MockGenesisMX:
+    def __init__(self, serial: str, logger: logging.Logger | None = None) -> None:
+        self.log = logger if logger else logging.getLogger(f"{__name__}.{serial}")
+        self.serial = serial
+        self._power_mw = 0.0
+        self._mode = OperationMode.PHOTO
+
+        self._software_switch = False
+        self._interlock = True
+        self._key = True
+        self._remote_control_enable = True
+        self._analog_input_enable = False
+        self._head = GenesisMXHeadInfo(
+            serial=serial,
+            type=GenesisMXHeadType.MINIX,
+            hours=str(random.randint(100, 1000)),
+            board_revision="1.0",
+            dio_status="OK",
+        )
+        self._alarms = []
+
+    @property
+    def mode(self) -> OperationMode:
+        """Get the current mode of the laser: current mode or photomode."""
+        return self._mode
+
+    @mode.setter
+    def mode(self, value: OperationMode) -> None:
+        """Set the mode of the laser."""
+        self._mode = value
+
+    @property
+    def power_mw(self) -> float:
+        """Get the current power of the laser."""
+        if self.enable_loop.enabled:
+            return random.gauss(self._power_mw, 0.25)
+        return random.gauss(1.5, 0.15)
+
+    @power_mw.setter
+    def power_mw(self, value: float) -> None:
+        """Set the power of the laser."""
+        if not self.enable_loop.enabled:
+            self.log.warning(
+                f"Attempting to set power to {value} mW while laser is disabled."
+            )
+        self._power_mw = value
+
+    @property
+    def power_setpoint_mw(self) -> float:
+        """Get the current power setpoint of the laser."""
+        return self._power_mw
+
+    @property
+    def ldd_current(self) -> float:
+        return 8 + self.power_mw / 900
+
+    @property
+    def ldd_current_limit(self) -> float:
+        return 9 + 1000 / 900
+
+    @property
+    def enable_loop(self) -> GenesisMXEnableLoop:
+        return GenesisMXEnableLoop(
+            software=self._software_switch,
+            interlock=self._interlock,
+            key=self._key,
+        )
+
+    def enable(self) -> GenesisMXEnableLoop:
+        """Enable the laser."""
+        self._software_switch = True
+        return self.enable_loop
+
+    def disable(self) -> GenesisMXEnableLoop:
+        """Disable the laser."""
+        self._software_switch = False
+        return self.enable_loop
+
+    @property
+    def is_ldd_enabled(self) -> bool:
+        return True
+
+    @property
+    def analog_input_enable(self) -> bool:
+        return self._analog_input_enable
+
+    @analog_input_enable.setter
+    def analog_input_enable(self, value: bool) -> None:
+        self._analog_input_enable = value
+
+    @property
+    def remote_control_enable(self) -> bool:
+        return self._remote_control_enable
+
+    @remote_control_enable.setter
+    def remote_control_enable(self, value: bool) -> None:
+        self._remote_control_enable = value
+
+    @property
+    def head(self) -> GenesisMXHeadInfo:
+        return self._head
+
+    @property
+    def alarms(self) -> list[Alarms]:
+        return self._alarms
+
+    @property
+    def temperature_c(self) -> float:
+        return random.uniform(20.0, 30.0)
+
+    @property
+    def main_tec_drive_v(self) -> float:
+        return random.uniform(0.0, 1.0)
+
+    @property
+    def shg_temperature_c(self) -> float:
+        return random.uniform(20.0, 30.0)
+
+    @property
+    def shg_heater_drive_v(self) -> float:
+        return random.uniform(0.0, 1.0)
+
+    @property
+    def brf_temperature_c(self) -> float:
+        return random.uniform(20.0, 30.0)
+
+    @property
+    def brf_heater_drive_v(self) -> float:
+        return random.uniform(0.0, 1.0)
+
+    @property
+    def etalon_temperature_c(self) -> float:
+        return random.uniform(20.0, 30.0)
+
+    @property
+    def etalon_heater_drive_v(self) -> float:
+        return random.uniform(0.0, 1.0)
+
+    def close(self) -> None:
+        pass

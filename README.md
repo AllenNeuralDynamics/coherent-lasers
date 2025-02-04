@@ -1,79 +1,69 @@
 # coherent_lasers
 
-This repository contains python driver packages for various lasers manufactured by coherent. To facilitate
-communication with the devices, the drivers utilize:
+Python drivers for Coherent lasers.
 
-1. low level SDKs provided by coherent
-2. Serial communication via `RS232` and equivalent protocols
-
-## Supported Lasers
-
-1. [Genesis MX](#genesis-mx-laser-series-driver)
+## Project Overview
 
 Repository is organized by laser model. Each laser model has its own directory containing the driver code.
 
    ```text
    coherent_lasers/
    ├── src/
-   │   ├── common/
-   │   │   ├── hops/
-   │   │   │   ├── CohrFTCI2C.h
-   │   │   │   ├── CohrHOPS.h
-   │   │   │   ├── (DLL files for each .h file)
-   │   │   │   ├── manager.py
-   │   │   │   └── device.py
-   │   │   ├── serial/
-   │   │   │   └── serial_device.py
+   │   ├── app/
+   │   │   ├── api.py
+   │   │   ├── cli.py
+   │   │   ├── main.py
+   │   ├── hops/
+   │   │   ├── CohrFTCI2C.h
+   │   │   ├── CohrHOPS.h
+   │   │   ├── (DLL files for each .h file)
+   │   │   ├── lib.py
    │   ├── genesis_mx/
-   │   │   ├── genesis_mx.py
-   │   │   ├── genesis_mx_voxel.py
-   │   │   └── README.md
+   │   │   ├── commands.py
+   │   │   └── driver.py
    └── setup.py
    ```
 
+### Supported Lasers
+
+1. [Genesis MX](https://www.coherent.com/lasers/cw-solid-state/genesis)
+   The `GenesisMX` class provides a comprehensive API for controlling the laser.
+   Supports connection via USB using the HOPS SDK provided by Coherent.
+
 ## Installation
 
-You can install the `coherent_lasers` package directly from a GitHub release using `pip`.
+Download the latest release from the [releases page](https://github.com/AllenNeuralDynamics/coherent_lasers/releases).
 
 ```bash
-coherent_version=0.1.0
+pip install <path_to_downloaded_wheel>
+```
+
+Alternatively you can install the `coherent_lasers` package directly from a GitHub release using `pip`.
+
+```bash
+coherent_version=0.2.0
 pip install https://github.com/AllenNeuralDynamics/coherent_lasers/releases/download/v${coherent_version}/coherent_lasers-${coherent_version}-py3-none-any.whl
 ```
 
-## Genesis MX Laser Series Driver
-
-A minimal python driver for a Genesis MX laser
-
-Provides two classes for controlling a Coherent Genesis MX laser.
-
-1. The `GenesisMX` class provides a comprehensive API for controlling the laser.
-2. The `GenesisMXVoxelLaser` class provides a simplified API for controlling the laser based on the requirements of the [Voxel](https://github.com/AllenNeuralDynamics/voxel/) library.
-
-Supports connection via USB using the HOPS SDK provided by Coherent.
+>: **Note:** Installing the package from a wheel file will ensure that the necessary dll files are included. If you install the package from source, you will need to download the dll files and add them to the `src/coherent_lasers/src/hops` directory.
 
 ## Usage
 
-Lasers such as the Genesis MX series require that the HOPS dll files are installed and configured properly. (_HOPS dependent lasers only work on Windows._)
-
-Installing this package from the .whl file will include the necessary dependencies. Otherwise you will need to download the dll files and add them to your system path.
-
-Once installed, you can test the driver using the following commands
-
-For a simple command line interface to send commands to a hops device, you can run the following command:
-
-```bash
-cohrhops
-```
-
-Alternatively, run the following command to interact with connected Genesis MX lasers:
+To launch a web GUI for controlling the laser, run the following command:
 
 ```bash
 genesis-mx
 ```
 
-## Getting Started with the Web GUI
+Alternatively, you can use the cli by running the following command:
 
-> **Note:** The web GUI is a work in progress and is not fully functional yet.
+```bash
+genesis-mx-cli
+```
+
+### Building the Web GUI
+
+> **Note:** The GUI is a work in progress.
 
 ```bash
 cd webgui

@@ -15,6 +15,8 @@
     step,
   }: DeliminatedInputProps = $props();
 
+  let textInput: HTMLInputElement;
+
   function enforceDelimination(value: number) {
     if (min !== undefined) {
       if (value < min) {
@@ -33,8 +35,9 @@
     const target = e.target as HTMLInputElement;
     let newValue = Number(target.value);
     if (isNaN(newValue)) return;
-    value = enforceDelimination(newValue);
-    return value;
+    newValue = enforceDelimination(newValue);
+    textInput.value = newValue.toString();
+    return newValue;
   }
 
   function handleValueChange(e: Event) {
@@ -44,7 +47,12 @@
 </script>
 
 <div class="deliminated-input">
-  <input type="text" {value} onchange={handleValueChange} />
+  <input
+    type="text"
+    {value}
+    onchange={handleValueChange}
+    bind:this={textInput}
+  />
   <input
     type="range"
     {min}

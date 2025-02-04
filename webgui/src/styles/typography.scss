@@ -1,3 +1,5 @@
+$font-sizes: xs, sm, md, lg, xl, 2xl;
+
 :root {
     --font-xs: 0.75rem;
     --font-sm: 0.875rem;
@@ -7,7 +9,25 @@
     --font-2xl: 1.5rem;
 }
 
+@each $size in $font-sizes {
+    .text-#{$size} {
+        font-size: var(--font-#{$size});
+    }
+}
+
 h1 {
     font-size: var(--font-2xl);
     font-weight: 350;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-left {
+    text-align: left;
 }

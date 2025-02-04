@@ -1,64 +1,38 @@
 <script lang="ts">
   import LaserCards from "./lib/LaserCards.svelte";
-  import LasersInfo from "./lib/LasersInfo.svelte";
-  import type { Laser } from "./types";
+  import { GenesisMXState } from "./state.svelte";
   import LaserLogo from "/laser-logo.svg";
-
-  async function generateMockLasers(
-    count: number
-  ): Promise<Record<string, Laser>> {
-    const lasers: Record<string, Laser> = {};
-    for (let i = 0; i < count; i++) {
-      const serial = (Math.random() * 1e9).toFixed(0);
-      lasers[serial] = {
-        headInfo: {
-          serial,
-          type: "MiniX",
-          hours: (Math.random() * 5000).toFixed(0),
-          board_revision: "1.0",
-          dio_status: "0",
-        },
-        signals: {
-          power: Array.from({ length: 100 }, () => Math.random() * 200),
-          powerSetpoint: Array.from({ length: 100 }, () => 100),
-          lddCurrent: Array.from({ length: 10 }, () => Math.random()),
-          lddCurrentLimit: Array.from({ length: 10 }, () => 0.75),
-          mainTemperature: Array.from({ length: 10 }, () => 25),
-          shgTemperature: Array.from({ length: 10 }, () => 25),
-          brfTemperature: Array.from({ length: 10 }, () => 25),
-          etalonTemperature: Array.from({ length: 10 }, () => 25),
-        },
-        flags: {
-          interlock: Math.random() > 0.5,
-          keySwitch: Math.random() > 0.5,
-          softwareSwitch: Math.random() > 0.5,
-          remoteControl: Math.random() > 0.5,
-          analogInput: Math.random() > 0.5,
-        },
-      };
-    }
-    // Fake delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return lasers;
-  }
+  const appState = new GenesisMXState();
 </script>
 
 <main>
   <div class="heading">
-    <img src={LaserLogo} class="logo" alt="Laser Logo" />
-    <h1>Genesis MX</h1>
-  </div>
-  {#await generateMockLasers(3)}
-    <p class="fetch-indicator">Loading...</p>
-  {:then lasers}
-    <p class="fetch-indicator">Lasers: {Object.keys(lasers).length}</p>
-    <div class="main-panel">
-      <LaserCards {lasers} />
-      <!-- <LasersInfo {lasers} /> -->
+    <div class="app-name">
+      <img src={LaserLogo} class="logo" alt="Laser Logo" />
+      <h1>Genesis MX</h1>
     </div>
-  {:catch error}
-    <p>Error: {error.message}</p>
-  {/await}
+    <div class="controls">
+      <label for="power-limit">Max Power</label>
+      <input type="number" bind:value={appState.powerLimit} />
+      {#if appState.isRunning}
+        <button class="running" onclick={() => appState.stop()}>
+          <span>Stop</span>
+        </button>
+      {:else}
+        <button onclick={() => appState.init().then(() => {})}>
+          <span>Start</span>
+        </button>
+      {/if}
+    </div>
+  </div>
+  <div class="main-panel">
+    {#if appState.isRunning}
+      {@const lasers = appState.lasers}
+      <LaserCards {lasers} />
+    {:else}
+      <p class="fetch-indicator">Click the Start button to begin</p>
+    {/if}
+  </div>
 </main>
 
 <style>
@@ -74,15 +48,65 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 0.5rem 1rem;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--zinc-600);
-    background-color: var(--zinc-800);
+    background-color: var(--zinc-900);
     margin-block-end: 1rem;
 
-    .logo {
-      height: 1.75rem;
-      will-change: filter;
-      transition: filter 300ms;
+    .app-name {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      .logo {
+        height: 1.5rem;
+        will-change: filter;
+        transition: filter 300ms;
+      }
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      label {
+        font-size: var(--font-lg);
+        color: var(--zinc-400);
+      }
+
+      button {
+        font-size: var(--font-lg);
+        padding: 0.5rem 1rem;
+        min-width: 6rem;
+        --color: var(--emerald-500);
+        --bg-color: color-mix(in srgb, var(--color) 10%, transparent);
+        color: var(--color);
+        background-color: var(--bg-color);
+        border: 1px solid var(--color);
+        &.running {
+          --color: var(--rose-500);
+        }
+        &:hover,
+        &:focus,
+        &:focus-visible {
+          outline: none;
+          --bg-color: color-mix(in srgb, var(--color) 20%, transparent);
+        }
+      }
+      input[type="number"] {
+        width: 6rem;
+        padding: 0.5rem;
+        font-size: var(--font-lg);
+        border: 1px solid var(--zinc-600);
+        background-color: var(--zinc-900);
+        color: var(--zinc-300);
+        outline: none;
+        &:hover,
+        &:focus,
+        &:focus-visible {
+          outline: none;
+          border-color: var(--zinc-500);
+        }
+      }
     }
   }
   .fetch-indicator {
@@ -93,7 +117,7 @@
   }
   .main-panel {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-rows: max-content;
     height: 100%;
   }
 </style>

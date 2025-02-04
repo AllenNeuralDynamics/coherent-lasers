@@ -1,5 +1,6 @@
 [project]
 name = "coherent_lasers"
+version = "0.2.0"
 description = "A python package for controlling coherent lasers"
 license = { text = "MIT" }
 requires-python = ">=3.10, < 3.12"
@@ -9,21 +10,16 @@ authors = [
 classifiers = ["Programming Language :: Python :: 3.10"]
 readme = "README.md"
 keywords = ["laser", "coherent", "drivers", "hardware control"]
-dynamic = ["version"]
 
 
 [build-system]
 requires = ["setuptools>=42", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
-dependencies = [
-    "fastapi",
-    "uvicorn",
-    "click>=8.1.7"
-]
+dependencies = []
 
 [project.optional-dependencies]
-gui = ["fastapi[standard]", "uvicorn"]
+gui = ["fastapi[standard]", "uvicorn", "click>=8.1.7"]
 dev = [
     'pytest',
     'black',
@@ -37,9 +33,8 @@ dev = [
 build = ["setuptools>=42", "setuptools-scm"]
 
 [project.scripts]
-cohrhops = "coherent_lasers.hops.app:cli"
-genesis-mx = "coherent_lasers.genesis_mx.app:cli"
-genesismx = "coherent_lasers.webapp.app:run"
+genesis-mx = "coherent_lasers.app.main:run"
+genesis-mx-cli = "coherent_lasers.app.cli:cli"
 
 
 [tool.setuptools]
@@ -49,7 +44,7 @@ py-modules = []
 
 [tool.setuptools.package-data]
 "coherent_lasers.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]
-"coherent_lasers.webgui" = ["frontend/build/*"]
+"coherent_lasers.app" = ["frontend/build/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
