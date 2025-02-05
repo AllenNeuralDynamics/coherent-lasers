@@ -36,6 +36,7 @@ except Exception as e:
 
 # Constants
 COHRHOPS_OK = 0
+COHRHOPS_INVALID_HEAD = -2
 MAX_DEVICES = 20
 MAX_STRLEN = 100
 
@@ -90,7 +91,7 @@ class HandleCollection:
 
 
 class CohrHOPSManager:
-    def __init__(self, refresh_interval: float = 5):
+    def __init__(self):
         self._log = logging.getLogger(__name__)
         self._lock = Lock()
         self._dll = C.CDLL(HOPS_DLL)
@@ -99,59 +100,52 @@ class CohrHOPSManager:
         self._removed_connections: HandleCollection = HandleCollection()
         self._added_connections: HandleCollection = HandleCollection()
         self._serials: dict[str, COHRHOPS_HANDLE] = {}
-        self._refresh_interval = refresh_interval
         self.close()
         self.discover()
-        # self._discover_thread = threading.Thread(target=self._discover_loop, daemon=True)
-        # self._discover_thread.start()
 
     def discover(self) -> list[str]:
-        max_attempts = 5
-        timeout = 1
-        attempts = 0
-
-        while attempts < max_attempts:
-            self._refresh_connected_handles()
-            if len(self._connections) > 0:
-                break
-            self._log.warning(
-                f"No devices found, attempt {attempts + 1}/{max_attempts}. Retrying in {timeout} seconds..."
-            )
-            time.sleep(timeout)
-            attempts += 1
+        self._refresh_connected_handles()
 
         if len(self._connections) == 0:
-            self._log.error(f"No devices found after {max_attempts} attempts.")
-            raise HOPSException(f"No devices found after {max_attempts} attempts.")
+            self._log.error("No devices found.")
+            raise HOPSException("No devices found.")
 
         self._refresh_serials()
         return self.serials
-
-    def _discover_loop(self):
-        while True:
-            self.discover()
-            time.sleep(self._refresh_interval)
 
     def send_command(self, serial: str, command: str) -> str:
         def send_cohrhops_command(handle: COHRHOPS_HANDLE, command: str) -> str | None:
             response = C.create_string_buffer(MAX_STRLEN)
             res = self._send_command(handle, command.encode("utf-8"), response)
-            return response.value.decode("utf-8").strip() if res == COHRHOPS_OK else None
+            if res != COHRHOPS_OK:
+                self._log.error(f"SendCommand failed for handle {hex(int(handle))} with error {res}")
+                return None
+            return response.value.decode("utf-8").strip()
 
+        # Check if device is known; if not, run discovery.
         if serial not in self.serials:
-            self._log.warning(f"Device {serial} not found. Attempting to discover devices...")
+            self._log.warning(f"Device {serial} not found; rediscovering...")
             self.discover()
 
         if serial not in self.serials:
             raise HOPSCommandException("Device not found", command, -404)
 
         with self._lock:
-            if response := send_cohrhops_command(self._serials[serial], command):
+            # Try sending the command
+            response = send_cohrhops_command(self._serials[serial], command)
+            if response is not None:
                 return response
+
+            # If sending failed, attempt to reinitialize the device safely.
             if self._initialize_device(self._serials[serial]):
                 response = send_cohrhops_command(self._serials[serial], command)
-                if response:
+                if response is not None:
                     return response
+
+            # If the above did not work, close the device and remove it from state.
+            self._log.error(f"SendCommand ultimately failed for device {serial}; closing handle.")
+            self._close(self._serials[serial])
+            del self._serials[serial]
             raise HOPSCommandException("Error sending command", command, -500)
 
     async def async_send_command(self, serial: str, command: str) -> str:
@@ -167,11 +161,16 @@ class CohrHOPSManager:
         with self._lock:
             handle = self._serials.get(serial)
             if not handle:
-                self._log.warning(f"Unable to close {serial}. Device not found.")
+                self._log.warning(f"Unable to close device {serial}: not found in active list.")
                 return
             res = self._close(handle)
             if res != COHRHOPS_OK:
-                self._log.error(f"Error closing device - {serial}.")
+                self._log.error(f"Error closing device {serial} (handle {hex(int(handle))}): error code {res}")
+            else:
+                self._log.info(f"Successfully closed device {serial} (handle {hex(int(handle))}).")
+            # Remove the handle from our internal list regardless.
+            if serial in self._serials:
+                del self._serials[serial]
 
     def close(self):
         with self._lock:
@@ -207,9 +206,18 @@ class CohrHOPSManager:
         self._log.debug(f"Updated conection info. Handles: {self._connections.handles}")
 
     def _initialize_device(self, handle: COHRHOPS_HANDLE) -> bool:
+        """Attempt to initialize the device. If initialization fails, try cleanup and return False."""
         headtype = C.create_string_buffer(MAX_STRLEN)
         res = self._initialize_handle(handle, headtype)
-        return res == COHRHOPS_OK
+        if res != COHRHOPS_OK:
+            self._log.error("Initialization failed for handle %s, error: %d", hex(int(handle)), res)
+            # Attempt to close the handle to free resources.
+            self._close(handle)
+            return False
+        self._log.debug(
+            f"Initialization succeeded for handle {hex(int(handle))}, head type: {headtype.value.decode('utf-8')}"
+        )
+        return True
 
     def _refresh_serials(self):
         def query_serial(handle: COHRHOPS_HANDLE) -> str | None:
