@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from coherent_lasers.genesis_mx.driver import GenesisMX, MockGenesisMX
-from coherent_lasers.hops.lib import get_hops_manager, reset_hops_manager
 
 GENESIS_MX_HEADTYPES = {"MiniX", "Mini00"}
 
@@ -69,9 +68,7 @@ class GenesisMXModel(BaseModel):
     flags: GenesisMXFlags
 
 
-MessageData: TypeAlias = (
-    dict[str, GenesisMXSignals] | dict[str, GenesisMXPower] | dict[str, GenesisMXFlags]
-)
+MessageData: TypeAlias = dict[str, GenesisMXSignals] | dict[str, GenesisMXPower] | dict[str, GenesisMXFlags]
 
 
 class BaseMessage(BaseModel):
@@ -161,9 +158,7 @@ class GenesisMXRouter(APIRouter):
                 raise HTTPException(status_code=404, detail="Laser not found")
             laser = self.lasers[serial]
             laser.power_mw = value
-            print(
-                f"Set power of laser {serial} to {value} mW. laser.power_mw: {laser.power_mw}"
-            )
+            print(f"Set power of laser {serial} to {value} mW. laser.power_mw: {laser.power_mw}")
             # await self.broadcast_power()
 
         @self.put("/enable")
@@ -172,9 +167,7 @@ class GenesisMXRouter(APIRouter):
             if serial not in self.lasers:
                 raise HTTPException(status_code=404, detail="Laser not found")
             self.lasers[serial].enable()
-            print(
-                f"Enabled laser {serial}. Software switch: {self.lasers[serial].software_switch}"
-            )
+            print(f"Enabled laser {serial}. Software switch: {self.lasers[serial].software_switch}")
             await self.broadcast_flags()
 
         @self.put("/disable")
@@ -183,9 +176,7 @@ class GenesisMXRouter(APIRouter):
             if serial not in self.lasers:
                 raise HTTPException(status_code=404, detail="Laser not found")
             self.lasers[serial].disable()
-            print(
-                f"Disabled laser {serial}. Software switch: {self.lasers[serial].software_switch}"
-            )
+            print(f"Disabled laser {serial}. Software switch: {self.lasers[serial].software_switch}")
             await self.broadcast_flags()
 
         @self.put("/remote")
@@ -229,9 +220,7 @@ class GenesisMXRouter(APIRouter):
     async def broadcast_flags(self):
         await self.broadcast_items("flags", self._get_all_laser_flags())
 
-    async def scheduled_broadcast(
-        self, msg_type: str, data: MessageData, interval: float
-    ):
+    async def scheduled_broadcast(self, msg_type: str, data: MessageData, interval: float):
         while True:
             try:
                 await self.broadcast_items(msg_type, data)
@@ -337,19 +326,10 @@ class GenesisMXRouter(APIRouter):
         )
 
     def _get_all_laser_powers(self) -> dict[str, GenesisMXPower]:
-        return {
-            serial: self._get_laser_power(laser)
-            for serial, laser in self.lasers.items()
-        }
+        return {serial: self._get_laser_power(laser) for serial, laser in self.lasers.items()}
 
     def _get_all_laser_signals(self) -> dict[str, GenesisMXSignals]:
-        return {
-            serial: self._get_laser_signals(laser)
-            for serial, laser in self.lasers.items()
-        }
+        return {serial: self._get_laser_signals(laser) for serial, laser in self.lasers.items()}
 
     def _get_all_laser_flags(self) -> dict[str, GenesisMXFlags]:
-        return {
-            serial: self._get_laser_flags(laser)
-            for serial, laser in self.lasers.items()
-        }
+        return {serial: self._get_laser_flags(laser) for serial, laser in self.lasers.items()}

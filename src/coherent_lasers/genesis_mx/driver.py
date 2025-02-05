@@ -9,8 +9,7 @@ from coherent_lasers.genesis_mx.commands import (
     OperationMode,
     Alarms,
 )
-from coherent_lasers.hops import HOPSDevice
-from ..hops.lib import HOPSException
+from coherent_lasers.hops import HOPSDevice, HOPSException
 
 
 @dataclass(frozen=True)
@@ -60,9 +59,7 @@ class GenesisMXEnableLoop:
         return self.interlock and self.key and not self.software
 
     def __repr__(self) -> str:
-        return (
-            f"Software: {self.software}, Interlock: {self.interlock}, Key: {self.key}"
-        )
+        return f"Software: {self.software}, Interlock: {self.interlock}, Key: {self.key}"
 
 
 class GenesisMX:
@@ -98,16 +95,12 @@ class GenesisMX:
         value = value / self._unit_factor
         self.send_write_command(WriteCmds.SET_POWER, value)
         if not self.enable_loop.enabled:
-            self.log.warning(
-                f"Attempting to set power to {value} mW while laser is disabled."
-            )
+            self.log.warning(f"Attempting to set power to {value} mW while laser is disabled.")
 
     @property
     def power_setpoint_mw(self) -> float:
         """Get the current power setpoint of the laser."""
-        return (
-            float(self.send_read_command(ReadCmds.POWER_SETPOINT)) * self._unit_factor
-        )
+        return float(self.send_read_command(ReadCmds.POWER_SETPOINT)) * self._unit_factor
 
     @property
     def ldd_current(self) -> float:
@@ -168,6 +161,7 @@ class GenesisMX:
         try:
             self.send_write_command(WriteCmds.SET_REMOTE_CONTROL, value)
         except HOPSException:
+            self.log.debug(f"Failed to set remote control to {value}")
             pass
 
     @property
@@ -182,6 +176,7 @@ class GenesisMX:
         try:
             self.send_write_command(WriteCmds.SET_ANALOG_INPUT, value)
         except HOPSException:
+            self.log.debug(f"Failed to set analog input to {value}")
             pass
 
     def enable(self) -> GenesisMXEnableLoop:
@@ -319,9 +314,7 @@ class GenesisMX:
 
     # Commands
 
-    def send_write_command(
-        self, cmd: WriteCmds, new_value: float | None = None
-    ) -> None:
+    def send_write_command(self, cmd: WriteCmds, new_value: float | None = None) -> None:
         """Send a write command to the laser."""
         self.hops.send_command(f"{cmd.value}{new_value}")
 
@@ -391,9 +384,7 @@ class MockGenesisMX:
     def power_mw(self, value: float) -> None:
         """Set the power of the laser."""
         if not self.enable_loop.enabled:
-            self.log.warning(
-                f"Attempting to set power to {value} mW while laser is disabled."
-            )
+            self.log.warning(f"Attempting to set power to {value} mW while laser is disabled.")
         self._power_mw = value
 
     @property

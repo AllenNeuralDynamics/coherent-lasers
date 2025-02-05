@@ -12,9 +12,6 @@ logger.setLevel(logging.ERROR)
 
 DLL_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Add the DLL directory to the DLL search path
-# os.add_dll_directory(DLL_DIR)
-
 # Add the DLL directory to the system PATH
 os.environ["PATH"] = DLL_DIR + os.pathsep + os.environ["PATH"]
 
@@ -157,16 +154,11 @@ class HOPSManager:
         )
         if res != COHRHOPS_OK:
             raise HOPSException(f"Error checking for devices: {res}")
-        self._log.debug(
-            f"Updated devices info. Connected: {self._number_of_devices_connected.value}"
-        )
+        self._log.debug(f"Updated devices info. Connected: {self._number_of_devices_connected.value}")
 
     def _activate_all_devices(self):
         self._log.debug("Activating all devices...")
-        connected_handles = {
-            self._devices_connected[i]
-            for i in range(self._number_of_devices_connected.value)
-        }
+        connected_handles = {self._devices_connected[i] for i in range(self._number_of_devices_connected.value)}
         for handle in connected_handles:
             self._initialize_device_by_handle(handle)
             ser = self._get_device_serial(handle)
@@ -177,21 +169,14 @@ class HOPSManager:
 
     def _validate_active_devices(self):
         self._log.debug("Validating active devices...")
-        connected_handles = {
-            self._devices_connected[i]
-            for i in range(self._number_of_devices_connected.value)
-        }
+        connected_handles = {self._devices_connected[i] for i in range(self._number_of_devices_connected.value)}
         for handle in connected_handles:
             self._initialize_device_by_handle(handle)
             ser = self._get_device_serial(handle)
             self._handles[handle] = ser
             if ser not in self._active_serials:
                 self._close_device_by_handle(handle)
-        self._handles = {
-            handle: ser
-            for handle, ser in self._handles.items()
-            if ser in self._active_serials
-        }
+        self._handles = {handle: ser for handle, ser in self._handles.items() if ser in self._active_serials}
         self._log.debug("Registered Handles: " + str(self._handles))
         self._log.debug("Active Devices: " + str(self._active_serials))
 
