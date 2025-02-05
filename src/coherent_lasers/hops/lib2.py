@@ -75,6 +75,10 @@ class HandleCollection:
     def pointer(self) -> C.Array[C.c_ulonglong]:
         return self._ptr
 
+    @property
+    def handles(self) -> list[COHRHOPS_HANDLE]:
+        return [self[i] for i in range(len(self))]
+
     def len_pointer(self):
         return C.byref(self._len)
 
@@ -102,12 +106,24 @@ class CohrHOPSManager:
         # self._discover_thread.start()
 
     def discover(self) -> list[str]:
-        # timeout = 1
-        self._refresh_connected_handles()
-        # if len(self._connections) == 0:
-        #     self._log.warning("No devices found, attempting to discover...")
-        #     time.sleep(timeout)
-        #     self._refresh_connected_handles()
+        max_attempts = 5
+        timeout = 1
+        attempts = 0
+
+        while attempts < max_attempts:
+            self._refresh_connected_handles()
+            if len(self._connections) > 0:
+                break
+            self._log.warning(
+                f"No devices found, attempt {attempts + 1}/{max_attempts}. Retrying in {timeout} seconds..."
+            )
+            time.sleep(timeout)
+            attempts += 1
+
+        if len(self._connections) == 0:
+            self._log.error(f"No devices found after {max_attempts} attempts.")
+            raise HOPSException(f"No devices found after {max_attempts} attempts.")
+
         self._refresh_serials()
         return self.serials
 
@@ -188,7 +204,7 @@ class CohrHOPSManager:
         )
         if res != COHRHOPS_OK:
             raise HOPSException(f"Error checking for devices: {res}")
-        self._log.debug(f"Updated conection info: {self._connections}")
+        self._log.debug(f"Updated conection info. Handles: {self._connections.handles}")
 
     def _initialize_device(self, handle: COHRHOPS_HANDLE) -> bool:
         headtype = C.create_string_buffer(MAX_STRLEN)
@@ -249,7 +265,7 @@ _cohrhops_manager_instance = None
 _cohrhops_manager_lock = threading.Lock()
 
 
-def get_cohrhops_manager():
+def get_cohrhops_manager() -> CohrHOPSManager:
     global _cohrhops_manager_instance
     if _cohrhops_manager_instance is None:
         with _cohrhops_manager_lock:
@@ -281,7 +297,7 @@ if __name__ == "__main__":
         # Get the manager instance (this automatically performs discovery)
         manager = get_cohrhops_manager()
 
-        manager.discover()
+        # manager.discover()
 
         # Print the DLL version
         print("DLL Version:", manager.version)
@@ -322,7 +338,7 @@ if __name__ == "__main__":
             except HOPSCommandException as e:
                 print(f"Asynchronous command failed: {e}")
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     print("=== Synchronous Example ===")
     sync_example()
