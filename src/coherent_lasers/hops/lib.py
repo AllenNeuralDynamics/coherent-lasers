@@ -3,6 +3,7 @@ from ctypes.util import find_library
 import logging
 import os
 import threading
+import time
 
 # Setup logging
 logging.basicConfig(level=logging.ERROR)
@@ -230,6 +231,14 @@ def get_hops_manager():
             if _hops_manager_instance is None:
                 _hops_manager_instance = HOPSManager()
     return _hops_manager_instance
+
+
+def reset_hops_manager():
+    global _hops_manager_instance
+    with _hops_manager_lock:
+        if _hops_manager_instance is not None:
+            _hops_manager_instance = None
+            time.sleep(1)
 
 
 class HOPSDevice:

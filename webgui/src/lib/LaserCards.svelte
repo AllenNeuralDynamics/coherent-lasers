@@ -14,7 +14,7 @@
 <style>
   .laser-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(40rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
     /* grid-template-rows: repeat(auto-fill, minmax(24rem, 1fr)); */
     grid-template-rows: max-content;
     gap: 1rem;

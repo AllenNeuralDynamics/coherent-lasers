@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import cached_property
 import logging
 import random
 from coherent_lasers.genesis_mx.commands import (
@@ -70,19 +71,10 @@ class GenesisMX:
         self.serial = serial
         self.hops = HOPSDevice(self.serial)
         if not self.hops:
-            raise ValueError(
-                f"Failed to initialize laser with serial number {self.serial}"
-            )
-        self.disable()
-        self._unit_factor = 1
-        if self.head.type == GenesisMXHeadType.MINIX:
-            self._unit_factor = 1000
-        try:
-            self.remote_control_enable = True
-        except HOPSException:
-            self.log.debug(
-                "Failed to enable remote control. Remote control may be disabled."
-            )
+            raise ValueError(f"Failed to initialize laser: {self.serial}")
+        self.remote_control = True
+        # self.disable()
+        self._unit_factor = 1000 if self.head.type == GenesisMXHeadType.MINIX else 1
 
     @property
     def mode(self) -> OperationMode:
@@ -138,10 +130,59 @@ class GenesisMX:
     @property
     def enable_loop(self) -> GenesisMXEnableLoop:
         return GenesisMXEnableLoop(
-            software=self.send_read_bool_command(ReadCmds.SOFTWARE_SWITCH_STATE),
-            interlock=self.send_read_bool_command(ReadCmds.INTERLOCK_STATUS),
-            key=self.send_read_bool_command(ReadCmds.KEY_SWITCH_STATE),
+            software=self.software_switch,
+            interlock=self.interlock,
+            key=self.key_switch,
         )
+
+    @property
+    def software_switch(self) -> bool:
+        try:
+            return self.send_read_bool_command(ReadCmds.SOFTWARE_SWITCH_STATE)
+        except HOPSException:
+            return False
+
+    @property
+    def interlock(self) -> bool:
+        try:
+            return self.send_read_bool_command(ReadCmds.INTERLOCK_STATUS)
+        except HOPSException:
+            return False
+
+    @property
+    def key_switch(self) -> bool:
+        try:
+            return self.send_read_bool_command(ReadCmds.KEY_SWITCH_STATE)
+        except HOPSException:
+            return False
+
+    @property
+    def remote_control(self) -> bool:
+        try:
+            return self.send_read_bool_command(ReadCmds.REMOTE_CONTROL_STATUS)
+        except HOPSException:
+            return True
+
+    @remote_control.setter
+    def remote_control(self, value: bool) -> None:
+        try:
+            self.send_write_command(WriteCmds.SET_REMOTE_CONTROL, value)
+        except HOPSException:
+            pass
+
+    @property
+    def analog_input(self) -> bool:
+        try:
+            return self.send_read_bool_command(ReadCmds.ANALOG_INPUT_STATUS)
+        except HOPSException:
+            return False
+
+    @analog_input.setter
+    def analog_input(self, value: bool) -> None:
+        try:
+            self.send_write_command(WriteCmds.SET_ANALOG_INPUT, value)
+        except HOPSException:
+            pass
 
     def enable(self) -> GenesisMXEnableLoop:
         """Enable the laser."""
@@ -162,39 +203,9 @@ class GenesisMX:
         """
         return self.send_read_bool_command(ReadCmds.LDD_ENABLE_STATE)
 
-    # Flags
-
-    @property
-    def analog_input_enable(self) -> bool:
-        """
-        Get the analog input status of the laser.
-
-        Reads the status of the analog input (enabled or disabled).
-        """
-        return self.send_read_bool_command(ReadCmds.ANALOG_INPUT_STATUS)
-
-    @analog_input_enable.setter
-    def analog_input_enable(self, value: bool) -> None:
-        """Set the analog input status of the laser."""
-        self.send_write_command(WriteCmds.SET_ANALOG_INPUT, 1 if value else 0)
-
-    @property
-    def remote_control_enable(self) -> bool:
-        """
-        Get the remote control status of the laser.
-
-        Reads whether remote control is enabled or disabled.
-        """
-        return self.send_read_bool_command(ReadCmds.REMOTE_CONTROL_STATUS)
-
-    @remote_control_enable.setter
-    def remote_control_enable(self, value: bool):
-        """Set the remote control status of the laser."""
-        self.send_write_command(WriteCmds.SET_REMOTE_CONTROL, 1 if value else 0)
-
     # Information
 
-    @property
+    @cached_property
     def head(self) -> GenesisMXHeadInfo:
         """Get the laser head information."""
         try:
@@ -224,7 +235,10 @@ class GenesisMX:
         Description: Measures the temperature of the main thermoelectric cooler (TEC) that regulates
         the overall temperature of the laser head to ensure optimal performance and stability.
         """
-        return self.send_read_float_command(ReadCmds.MAIN_TEMPERATURE)
+        try:
+            return self.send_read_float_command(ReadCmds.MAIN_TEMPERATURE)
+        except HOPSException:
+            return 0.0
 
     @property
     def main_tec_drive_v(self) -> float:
@@ -234,7 +248,10 @@ class GenesisMX:
         Measures the drive voltage of the main thermoelectric cooler (TEC), which regulates the
         overall temperature of the laser head.
         """
-        return self.send_read_float_command(ReadCmds.MAIN_TEC_DRIVE)
+        try:
+            return self.send_read_float_command(ReadCmds.MAIN_TEC_DRIVE)
+        except HOPSException:
+            return 0.0
 
     @property
     def shg_temperature_c(self) -> float:
@@ -245,12 +262,18 @@ class GenesisMX:
         maintaining the proper temperature for efficient frequency doubling processes that convert
         the laser light to the desired wavelength.
         """
-        return self.send_read_float_command(ReadCmds.SHG_TEMPERATURE)
+        try:
+            return self.send_read_float_command(ReadCmds.SHG_TEMPERATURE)
+        except HOPSException:
+            return 0.0
 
     @property
     def shg_heater_drive_v(self) -> float:
         """Get the SHG heater drive voltage of the laser."""
-        return self.send_read_float_command(ReadCmds.SHG_HEATER_DRIVE)
+        try:
+            return self.send_read_float_command(ReadCmds.SHG_HEATER_DRIVE)
+        except HOPSException:
+            return 0.0
 
     @property
     def brf_temperature_c(self) -> float:
@@ -260,12 +283,18 @@ class GenesisMX:
         Measures the temperature of the Beam Reference Frequency (BRF) heater. The BRF heater is essential for
         maintaining the proper temperature for the frequency reference of the laser.
         """
-        return self.send_read_float_command(ReadCmds.BRF_TEMPERATURE)
+        try:
+            return self.send_read_float_command(ReadCmds.BRF_TEMPERATURE)
+        except HOPSException:
+            return 0.0
 
     @property
     def brf_heater_drive_v(self) -> float:
         """Get the BRF heater drive voltage of the laser."""
-        return self.send_read_float_command(ReadCmds.BRF_HEATER_DRIVE)
+        try:
+            return self.send_read_float_command(ReadCmds.BRF_HEATER_DRIVE)
+        except HOPSException:
+            return 0.0
 
     @property
     def etalon_temperature_c(self) -> float:
@@ -275,12 +304,18 @@ class GenesisMX:
         Measures the temperature of the etalon heater. The etalon heater is crucial for maintaining the proper
         temperature for the etalon, which is used to stabilize the laser wavelength.
         """
-        return self.send_read_float_command(ReadCmds.ETALON_TEMPERATURE)
+        try:
+            return self.send_read_float_command(ReadCmds.ETALON_TEMPERATURE)
+        except HOPSException:
+            return 0.0
 
     @property
     def etalon_heater_drive_v(self) -> float:
         """Get the etalon heater drive voltage of the laser."""
-        return self.send_read_float_command(ReadCmds.ETALON_HEATER_DRIVE)
+        try:
+            return self.send_read_float_command(ReadCmds.ETALON_HEATER_DRIVE)
+        except HOPSException:
+            return 0.0
 
     # Commands
 
@@ -306,6 +341,12 @@ class GenesisMX:
     def close(self) -> None:
         self.power_mw = 0.0
         self.hops.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception as e:
+            self.log.debug(f"Error closing laser {self.serial}: {e}")
 
 
 class MockGenesisMX:
@@ -376,6 +417,34 @@ class MockGenesisMX:
             key=self._key,
         )
 
+    @property
+    def software_switch(self) -> bool:
+        return self._software_switch
+
+    @property
+    def interlock(self) -> bool:
+        return self._interlock
+
+    @property
+    def key_switch(self) -> bool:
+        return self._key
+
+    @property
+    def remote_control(self) -> bool:
+        return self._remote_control_enable
+
+    @remote_control.setter
+    def remote_control(self, value: bool) -> None:
+        self._remote_control_enable = value
+
+    @property
+    def analog_input(self) -> bool:
+        return self._analog_input_enable
+
+    @analog_input.setter
+    def analog_input(self, value: bool) -> None:
+        self._analog_input_enable = value
+
     def enable(self) -> GenesisMXEnableLoop:
         """Enable the laser."""
         self._software_switch = True
@@ -389,22 +458,6 @@ class MockGenesisMX:
     @property
     def is_ldd_enabled(self) -> bool:
         return True
-
-    @property
-    def analog_input_enable(self) -> bool:
-        return self._analog_input_enable
-
-    @analog_input_enable.setter
-    def analog_input_enable(self, value: bool) -> None:
-        self._analog_input_enable = value
-
-    @property
-    def remote_control_enable(self) -> bool:
-        return self._remote_control_enable
-
-    @remote_control_enable.setter
-    def remote_control_enable(self, value: bool) -> None:
-        self._remote_control_enable = value
 
     @property
     def head(self) -> GenesisMXHeadInfo:

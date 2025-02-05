@@ -32,15 +32,14 @@ dev = [
 ]
 build = ["setuptools>=42", "setuptools-scm"]
 
-[project.scripts]
-genesis-mx = "coherent_lasers.app.main:run"
-genesis-mx-cli = "coherent_lasers.app.cli:cli"
-
-
 [tool.setuptools]
 package-dir = { "" = "src" }
 include-package-data = true
 py-modules = []
+
+[project.scripts]
+genesis-mx = "coherent_lasers.app.main:run"
+genesis-mx-cli = "coherent_lasers.app.cli:cli"
 
 [tool.setuptools.package-data]
 "coherent_lasers.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]

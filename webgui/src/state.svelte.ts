@@ -143,6 +143,17 @@ export class GenesisMXState {
         });
     }
 
+    private updatePowerLimit = (signals: SignalsMessage) => {
+        const increaments = 5;
+        // check if any of the lasers has a power limit that is greater than the new value and update it
+        const maxPower = Math.max(...Object.values(signals).map((signal) => signal.power));
+        const maxPowerSetpoint = Math.max(...Object.values(signals).map((signal) => signal.powerSetpoint));
+        const signalMax = Math.max(maxPower, maxPowerSetpoint);
+        if (signalMax > this.powerLimit * 0.8) {
+            this.powerLimit = Math.ceil(signalMax * 1.2 / increaments) * increaments;
+        }
+    }
+
     stop = () => {
         Object.values(this.lasers).forEach((laser) => {
             if (!laser.flags.remoteControl) laser.toggleRemoteControl();
@@ -166,6 +177,7 @@ export class GenesisMXState {
                         continue;
                     }
                     this.lasers[serial].updateSignals(signals);
+                    // this.updatePowerLimit(signalsMessage);
                 }
                 break;
             case 'flags':
@@ -186,7 +198,7 @@ export const LaserPowerChart = (node: SVGSVGElement, laser: Laser) => {
     const container = node.parentElement ?? node;
 
     const svg = d3.select(node);
-    const margin = { top: 20, right: 20, bottom: 25, left: 45 };
+    const margin = { top: 20, right: 10, bottom: 25, left: 45 };
 
     const draw = () => {
 

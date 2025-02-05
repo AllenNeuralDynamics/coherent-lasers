@@ -6,34 +6,10 @@ from typing import TypeAlias
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from coherent_lasers.genesis_mx.commands import ReadCmds
 from coherent_lasers.genesis_mx.driver import GenesisMX, MockGenesisMX
-from coherent_lasers.hops.lib import get_hops_manager
+from coherent_lasers.hops.lib import get_hops_manager, reset_hops_manager
 
 GENESIS_MX_HEADTYPES = {"MiniX", "Mini00"}
-
-
-class WebSocketManager:
-    def __init__(self):
-        self.clients: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.clients.append(websocket)
-
-    async def disconnect(self, websocket: WebSocket):
-        self.clients.remove(websocket)
-
-    async def broadcast(self, message: dict):
-        for client in self.clients:
-            try:
-                await client.send_json(message)
-            except WebSocketDisconnect:
-                self.clients.remove(client)
-
-    async def shutdown(self):
-        for client in self.clients:
-            await client.close()
 
 
 def handle_exceptions(endpoint_function):
@@ -104,57 +80,47 @@ class BaseMessage(BaseModel):
     data: MessageData | None = None
 
 
-# class SignalsMessage(BaseMessage):
-#     type: str = "signals"
-#     data: dict[str, GenesisMXSignals] | dict[str, GenesisMXPower]
-
-
-# class FlagsMessage(BaseMessage):
-#     type: str = "flags"
-#     data: dict[str, GenesisMXFlags]
-
-
 class GenesisMXRouter(APIRouter):
-    _manager = get_hops_manager()
+    # _manager = get_hops_manager()
 
-    def __init__(self, num_mock_lasers: int = 0):
+    def __init__(self, num_mock_lasers: int = 3):
         super().__init__(prefix="/genesis-mx")
         self.log = logging.getLogger("HOPSRouter")
-        serials = self._manager._handles.values()
+        # serials = self._manager._handles.values()
         self.lasers: dict[str, GenesisMX | MockGenesisMX] = {}
         self.clients: set[WebSocket] = set()
-        # self.ws_manager = WebSocketManager()
-        self._power_interval = 0.05
-        self._signal_interval = 10.0
-        self._flags_interval = 1.0
-        self._power_broadcast = None
-        self._signal_broadcast = None
-        self._flags_broadcast = None
+        # self._power_interval = 0.5
+        self._signal_interval = 0.5
+        self._flags_interval = 0.5
         self._broadcast_tasks = []
 
-        for serial in serials:
-            try:
-                laser = GenesisMX(serial)
-                response = laser.send_read_command(ReadCmds.HEAD_TYPE)
-                if response in GENESIS_MX_HEADTYPES:
-                    self.lasers[serial] = laser
-                else:
-                    self.log.warning(
-                        f"Device {serial} is not a Genesis MX laser. Skipping."
-                    )
-            except Exception as e:
-                self.log.warning(f"Failed to initialize device {serial}: {e}")
-                continue
+        # for serial in serials:
+        #     try:
+        #         laser = GenesisMX(serial)
+        #         self.lasers[serial] = laser
+        #         # response = laser.send_read_command(ReadCmds.HEAD_TYPE)
+        #         # if response in GENESIS_MX_HEADTYPES:
+        #         #     self.lasers[serial] = laser
+        #         # else:
+        #         #     self.log.warning(
+        #         #         f"Device {serial} is not a Genesis MX laser. Skipping."
+        #         #     )
+        #     except Exception as e:
+        #         self.log.warning(f"Failed to initialize device {serial}: {e}")
+        #         continue
 
-        for i in range(num_mock_lasers):
-            serial = f"mock-laser-{i}"
-            self.lasers[serial] = MockGenesisMX(serial)
+        if not self.lasers:
+            self.log.warning("No Genesis MX lasers found. Initializing mock lasers.")
+            for i in range(num_mock_lasers):
+                serial = f"mock-laser-{i}"
+                self.lasers[serial] = MockGenesisMX(serial)
+
+        print(f"Initialized {len(self.lasers)} lasers: {list(self.lasers.keys())}")
 
         @self.websocket("/")
         async def websocket_endpoint(websocket: WebSocket):
             await websocket.accept()
             self.clients.add(websocket)
-            # await self.ws_manager.connect(websocket)
             try:
                 while True:
                     data = await websocket.receive_text()
@@ -163,23 +129,25 @@ class GenesisMXRouter(APIRouter):
                 pass
             finally:
                 self.clients.remove(websocket)
-                # await self.ws_manager.disconnect(websocket)
 
         @self.on_event("shutdown")
         async def shutdown_event():
             await self.stop_broadcast_tasks()
             for websocket in self.clients:
                 await websocket.close(code=1001, reason="Server shutdown")
+            for laser in self.lasers.values():
+                laser.close()
+            # reset_hops_manager()
 
         @self.get("/")
         @handle_exceptions
         async def get_lasers() -> list[GenesisMXModel]:
             return self._get_all_laser_info()
 
-        @self.get("/devices")
-        @handle_exceptions
-        async def get_devices() -> list[str]:
-            return list(self._manager._handles.values())
+        # @self.get("/devices")
+        # @handle_exceptions
+        # async def get_devices() -> list[str]:
+        #     return list(self._manager._handles.values())
 
         @self.get("/serials")
         @handle_exceptions
@@ -193,7 +161,10 @@ class GenesisMXRouter(APIRouter):
                 raise HTTPException(status_code=404, detail="Laser not found")
             laser = self.lasers[serial]
             laser.power_mw = value
-            await self.broadcast_power()
+            print(
+                f"Set power of laser {serial} to {value} mW. laser.power_mw: {laser.power_mw}"
+            )
+            # await self.broadcast_power()
 
         @self.put("/enable")
         @handle_exceptions
@@ -201,6 +172,9 @@ class GenesisMXRouter(APIRouter):
             if serial not in self.lasers:
                 raise HTTPException(status_code=404, detail="Laser not found")
             self.lasers[serial].enable()
+            print(
+                f"Enabled laser {serial}. Software switch: {self.lasers[serial].software_switch}"
+            )
             await self.broadcast_flags()
 
         @self.put("/disable")
@@ -209,6 +183,9 @@ class GenesisMXRouter(APIRouter):
             if serial not in self.lasers:
                 raise HTTPException(status_code=404, detail="Laser not found")
             self.lasers[serial].disable()
+            print(
+                f"Disabled laser {serial}. Software switch: {self.lasers[serial].software_switch}"
+            )
             await self.broadcast_flags()
 
         @self.put("/remote")
@@ -217,7 +194,7 @@ class GenesisMXRouter(APIRouter):
             if serial not in self.lasers:
                 raise HTTPException(status_code=404, detail="Laser not found")
             laser = self.lasers[serial]
-            laser.remote_control_enable = value
+            laser.remote_control = value
             await self.broadcast_flags()
 
         @self.get("/signals")
@@ -239,14 +216,12 @@ class GenesisMXRouter(APIRouter):
             await client.send_json(message.model_dump())
 
     async def broadcast_items(self, msg_type: str, data: MessageData):
-        # if self.lasers and self.ws_manager.clients:
         if self.lasers and self.clients:
             message = BaseMessage(type=msg_type, data=data)
-            # await self.ws_manager.broadcast(message.model_dump())
             await self.broadcast(message)
 
-    async def broadcast_power(self):
-        await self.broadcast_items("signals", self._get_all_laser_powers())
+    # async def broadcast_power(self):
+    #     await self.broadcast_items("signals", self._get_all_laser_powers())
 
     async def broadcast_signals(self):
         await self.broadcast_items("signals", self._get_all_laser_signals())
@@ -266,13 +241,13 @@ class GenesisMXRouter(APIRouter):
 
     async def start_broadcast_tasks(self):
         self._broadcast_tasks = [
-            asyncio.create_task(
-                self.scheduled_broadcast(
-                    msg_type="signals",
-                    data=self._get_all_laser_powers(),
-                    interval=self._power_interval,
-                )
-            ),
+            # asyncio.create_task(
+            #     self.scheduled_broadcast(
+            #         msg_type="signals",
+            #         data=self._get_all_laser_powers(),
+            #         interval=self._power_interval,
+            #     )
+            # ),
             asyncio.create_task(
                 self.scheduled_broadcast(
                     msg_type="signals",
@@ -299,71 +274,6 @@ class GenesisMXRouter(APIRouter):
                     pass
                 except WebSocketDisconnect:
                     pass
-
-    # async def broadcast_power(self):
-
-    #     if self.lasers and self.ws_manager.clients:
-    #         powers = {
-    #             serial: GenesisMXPower(
-    #                 power=laser.power_mw, powerSetpoint=laser.power_setpoint_mw
-    #             )
-    #             for serial, laser in self.lasers.items()
-    #         }
-    #         message = SignalsMessage(data=powers)
-    #         await self.ws_manager.broadcast(message.model_dump())
-
-    # async def broadcast_signals(self):
-    #     if self.lasers and self.ws_manager.clients:
-    #         signals = {
-    #             serial: self._get_laser_signals(laser)
-    #             for serial, laser in self.lasers.items()
-    #         }
-    #         message = SignalsMessage(data=signals)
-    #         await self.ws_manager.broadcast(message.model_dump())
-
-    # async def broadcast_flags(self):
-    #     if self.lasers and self.ws_manager.clients:
-    #         flags = {
-    #             serial: self.get_laser_flags(laser)
-    #             for serial, laser in self.lasers.items()
-    #         }
-    #         message = FlagsMessage(data=flags)
-    #         await self.ws_manager.broadcast(message.model_dump())
-
-    # async def start_broadcast_tasks(self):
-    #     async def power_broadcast():
-    #         while True:
-    #             await self.broadcast_power()
-    #             await asyncio.sleep(self._power_interval)
-
-    #     self._power_broadcast = asyncio.create_task(power_broadcast())
-
-    #     async def signals_broadcast():
-    #         while True:
-    #             await self.broadcast_signals()
-    #             await asyncio.sleep(self._signal_interval)
-
-    #     self._signal_broadcast = asyncio.create_task(signals_broadcast())
-
-    #     async def flags_broadcast():
-    #         while True:
-    #             await self.broadcast_flags()
-    #             await asyncio.sleep(self._flags_interval)
-
-    #     self._flags_broadcast = asyncio.create_task(flags_broadcast())
-
-    # async def stop_broadcast_tasks(self):
-    #     for task in [
-    #         self._power_broadcast,
-    #         self._signal_broadcast,
-    #         self._flags_broadcast,
-    #     ]:
-    #         if task:
-    #             task.cancel()
-    #             try:
-    #                 await task
-    #             except asyncio.CancelledError:
-    #                 pass
 
     def _get_all_laser_info(self) -> list[GenesisMXModel]:
         info = []
@@ -410,11 +320,11 @@ class GenesisMXRouter(APIRouter):
         laser: GenesisMX | MockGenesisMX,
     ) -> GenesisMXFlags:
         return GenesisMXFlags(
-            interlock=laser.enable_loop.interlock,
-            keySwitch=laser.enable_loop.key,
-            softwareSwitch=laser.enable_loop.software,
-            remoteControl=laser.remote_control_enable,
-            analogInput=laser.analog_input_enable,
+            interlock=laser.interlock,
+            keySwitch=laser.key_switch,
+            softwareSwitch=laser.software_switch,
+            remoteControl=laser.remote_control,
+            analogInput=laser.analog_input,
         )
 
     @staticmethod

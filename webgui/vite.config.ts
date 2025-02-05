@@ -5,7 +5,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 export default defineConfig({
   plugins: [svelte()],
   build: {
-    outDir: '../src/coherent_lasers/webapp/frontend/build',
+    outDir: '../src/coherent_lasers/app/frontend/build',
     emptyOutDir: true,
   }
 })

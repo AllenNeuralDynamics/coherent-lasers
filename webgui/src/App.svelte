@@ -49,8 +49,8 @@
     align-items: center;
     gap: 1rem;
     justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--zinc-600);
+    padding: 0.25rem 1rem;
+    border-bottom: 1px solid var(--zinc-800);
     background-color: var(--zinc-900);
     margin-block-end: 1rem;
 
@@ -58,8 +58,12 @@
       display: flex;
       align-items: center;
       gap: 1rem;
+      h1 {
+        font-size: var(--font-lg);
+        color: var(--zinc-400);
+      }
       .logo {
-        height: 1.5rem;
+        height: 1.125rem;
         will-change: filter;
         transition: filter 300ms;
       }
@@ -68,14 +72,13 @@
       display: flex;
       align-items: center;
       gap: 1rem;
+      font-size: var(--font-md);
       label {
-        font-size: var(--font-lg);
         color: var(--zinc-400);
       }
 
       button {
-        font-size: var(--font-lg);
-        padding: 0.5rem 1rem;
+        padding: 0.25rem 0.5rem;
         min-width: 6rem;
         --color: var(--emerald-500);
         --bg-color: color-mix(in srgb, var(--color) 10%, transparent);
@@ -94,8 +97,8 @@
       }
       input[type="number"] {
         width: 6rem;
-        padding: 0.5rem;
-        font-size: var(--font-lg);
+        padding: 0.25rem 0.5rem;
+        /* font-size: var(--font-lg); */
         border: 1px solid var(--zinc-600);
         background-color: var(--zinc-900);
         color: var(--zinc-300);

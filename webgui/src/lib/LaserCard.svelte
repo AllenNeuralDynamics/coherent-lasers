@@ -79,7 +79,9 @@
     </div>
     <div class="setpoint-input">
       <p>Power</p>
-      <p>{laser.power[laser.power.length - 1].toFixed(2)}</p>
+      <div>
+        {laser.power[laser.power.length - 1].toFixed(2)}<span>( mW )</span>
+      </div>
       <p>Setpoint</p>
       <DeliminatedInput
         value={laser.powerSetpoint[laser.powerSetpoint.length - 1]}
@@ -95,8 +97,8 @@
       class:on={laser.flags.softwareSwitch}
       onclick={toggleSoftwareSwitch}
       disabled={!(
-        laser.flags.interlock &&
-        laser.flags.keySwitch &&
+        laser.flags.interlock ||
+        laser.flags.keySwitch ||
         laser.flags.remoteControl
       )}
     >
@@ -114,11 +116,11 @@
   .laser-card {
     --inline-spacing: 0.75rem;
     --block-spacing: 0.5rem;
-    --border-radius: 0.5rem;
-    --border: 1px solid var(--zinc-700);
+    --border-radius: 0.25rem;
+    --border: 1px solid var(--zinc-800);
     border: var(--border);
     border-radius: var(--border-radius);
-    background-color: var(--zinc-900);
+    background-color: var(--zinc-950);
     color: var(--zinc-300);
     display: flex;
     flex-direction: column;
@@ -135,9 +137,9 @@
     background-color: var(--zinc-900);
     border-bottom: var(--border);
     h2 {
-      font-size: var(--font-md);
-      font-weight: 300;
-      color: var(--zinc-400);
+      font-size: var(--font-xs);
+      font-weight: 500;
+      color: var(--zinc-500);
       text-transform: uppercase;
     }
     svg {
@@ -156,9 +158,9 @@
   .laser-flags {
     --transition-duration: 0.3s;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-    gap: 1rem calc(var(--inline-spacing) * 2);
-    padding: 1rem 0.75rem;
+    grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+    gap: 0.5rem;
+    padding: 1rem var(--inline-spacing);
   }
 
   .laser-flags > button {
@@ -171,9 +173,9 @@
     color: var(--color);
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.75rem;
-    border-radius: 0.5rem;
+    gap: 0.5rem;
+    padding: 0.375rem;
+    border-radius: 0.25rem;
     transition: all var(--transition-duration) ease-in-out;
     &:disabled {
       --border-color: color-mix(
@@ -204,7 +206,7 @@
     }
     .flag-name {
       text-transform: capitalize;
-      font-size: var(--font-md);
+      font-size: var(--font-sm);
       font-weight: 300;
     }
   }
@@ -216,28 +218,37 @@
     --thumb-hover-color: var(--yellow-400);
     --transition-duration: 0.2s;
     flex-grow: 1;
-    padding-block: 0.5rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.5rem;
   }
-  .laser-power {
-    padding-inline: Var(--inline-spacing);
-  }
+
   .laser-power .setpoint-input {
     display: grid;
-    grid-template-columns: 5rem 1fr;
+    grid-template-columns: auto 1fr;
+    align-items: center;
     gap: 1rem;
+    padding-inline: Var(--inline-spacing);
     p {
-      font-size: var(--font-lg);
+      font-size: var(--font-sm);
       font-weight: 300;
       color: var(--zinc-400);
+      text-align: right;
+    }
+    > div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.25rem;
+      span {
+        font-size: var(--font-xs);
+      }
     }
   }
   .laser-power .chart-container {
-    border: var(--border);
-    border-radius: calc(var(--border-radius) / 2);
-    height: clamp(16rem, 20vh, 16rem);
+    /* border: var(--border); */
+    /* border-radius: calc(var(--border-radius) / 2); */
+    height: clamp(12rem, 16vw, 16rem);
     display: flex;
     > svg {
       flex: 1;
