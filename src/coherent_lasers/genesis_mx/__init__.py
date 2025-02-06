@@ -18,7 +18,7 @@ from .commands import (
     ReadCmds as GenesisMXReadCmds,
     WriteCmds as GenesisMXWriteCmds,
     OperationMode as GenesisMXOperationModes,
-    Alarms as GenesisMXAlarms,
+    Alarm as GenesisMXAlarms,
 )
 from .driver import GenesisMX
 

@@ -7,7 +7,7 @@ from coherent_lasers.genesis_mx.commands import (
     ReadCmds,
     WriteCmds,
     OperationMode,
-    Alarms,
+    Alarm,
 )
 from coherent_lasers.hops import HOPSDevice, HOPSException
 
@@ -216,10 +216,10 @@ class GenesisMX:
         )
 
     @property
-    def alarms(self) -> list[Alarms]:
+    def alarms(self) -> list[Alarm]:
         """Get the list of active alarms based on the fault code."""
         fault_code_value = int(self.send_read_command(ReadCmds.FAULT_CODE), 16)
-        faults = Alarms.from_code(fault_code_value)
+        faults = Alarm.from_code(fault_code_value)
         return faults
 
     @property
@@ -455,7 +455,7 @@ class MockGenesisMX:
         return self._head
 
     @property
-    def alarms(self) -> list[Alarms]:
+    def alarms(self) -> list[Alarm]:
         return self._alarms
 
     @property

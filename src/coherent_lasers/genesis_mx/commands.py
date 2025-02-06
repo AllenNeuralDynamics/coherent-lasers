@@ -1,14 +1,13 @@
 """Coherent Genesis MX commands."""
 
 from enum import Enum
+from dataclasses import dataclass
 
 
 class ReadCmds(Enum):
     """Genesis MX Read Commands"""
 
-    CURRENT_MODE = (
-        "?CMODE"  # Read the current mode of the laser: 0 = Photo, 1 = Current
-    )
+    CURRENT_MODE = "?CMODE"  # Read the current mode of the laser: 0 = Photo, 1 = Current
     FAULT_CODE = "?FF"  # Read the fault code of the laser
     POWER = "?P"  # Read the current power of the laser
     POWER_SETPOINT = "?PCMD"  # Read the power setpoint of the laser
@@ -56,12 +55,92 @@ class WriteCmds(Enum):
     SET_SOFTWARE_SWITCH = "KSWCMD="
 
 
+# Read/Write commands that can be read and written
+# 1. Mode - Read: ?CMODE, Write: CMODECMD=
+# 2. PowerSetpoint - Read: ?PCMD, Write: PCMD=
+# 3. NonVolatilePower - Read: ?PMEM, Write: PMEM=
+# 4. AnalogInput - Read: ?ANA, Write: ANACMD=
+# 5. RemoteControl - Read: ?REM, Write: REM=
+# 6. SoftwareSwitch - Read: ?KSWCMD, Write: KSWCMD=
+
+# Read only commands
+# Information commands (cache)
+# 1. HeadSerial - Read: ?HID
+# 2. HeadType - Read: ?HTYPE
+# 3. HeadHours - Read: ?HH
+# 4. HeadDioStatus - Read: ?HEADDIO
+# 5. HeadBoardRevision - Read: ?HBDREV
+# Signal commands
+# 1. Power - Read: ?P
+# 2. Current - Read: ?C
+# 3. MainTemperature - Read: ?TMAIN
+# 4. SHGTemperature - Read: ?TSHG
+# 5. BRFTemperature - Read: ?TBRF
+# 6. EtalonTemperature - Read: ?TETA
+# 7. InterlockStatus - Read: ?INT
+# 8. KeySwitchState - Read: ?KSW
+# 9. FaultCode - Read: ?FF
+
+
+@dataclass(frozen=True)
+class ReadWrite:
+    read_cmd: str
+    write_cmd: str
+
+    def read(self) -> str:
+        return self.read_cmd
+
+    def write(self, value) -> str:
+        return f"{self.write_cmd}{value}"
+
+
+class ReadWriteCmd(Enum):
+    MODE = ReadWrite(read_cmd="?CMODE", write_cmd="CMODECMD=")
+    POWER_SETPOINT = ReadWrite(read_cmd="?PCMD", write_cmd="PCMD=")
+    NON_VOLATILE_POWER = ReadWrite(read_cmd="?PMEM", write_cmd="PMEM=")  # Not implemented
+    ANALOG_INPUT = ReadWrite(read_cmd="?ANA", write_cmd="ANACMD=")
+    REMOTE_CONTROL = ReadWrite(read_cmd="?REM", write_cmd="REM=")
+    SOFTWARE_SWITCH = ReadWrite(read_cmd="?KSWCMD", write_cmd="KSWCMD=")
+
+    def read(self) -> str:
+        return self.value.read()
+
+    def write(self, value: int | float) -> str:
+        return self.value.write(value=value)
+
+
+class ReadCmd(Enum):
+    HEAD_SERIAL = "?HID"
+    HEAD_TYPE = "?HTYPE"
+    HEAD_HOURS = "?HH"
+    HEAD_DIO_STATUS = "?HEADDIO"
+    HEAD_BOARD_REVISION = "?HBDREV"
+    # Signal Commands
+    POWER = "?P"
+    CURRENT = "?C"
+    MAIN_TEMPERATURE = "?TMAIN"
+    SHG_TEMPERATURE = "?TSHG"
+    BRF_TEMPERATURE = "?TBRF"
+    ETALON_TEMPERATURE = "?TETA"
+    INTERLOCK_STATUS = "?INT"
+    KEY_SWITCH_STATUS = "?KSW"
+    FAULT_CODE = "?FF"
+
+    def read(self) -> str:
+        return self.value
+
+
 class OperationMode(Enum):
     PHOTO = 0
     CURRENT = 1
 
 
-class Alarms(Enum):
+class HeadType(Enum):
+    MINIX = "MiniX"
+    MINI00 = "Mini00"
+
+
+class Alarm(Enum):
     NO_FAULT = (0x0000, "No fault")
     LASER_OVER_TEMPERATURE = (0x0001, "Laser over temperature")
     LASER_UNDER_TEMPERATURE = (0x0002, "Laser under temperature")
@@ -82,7 +161,7 @@ class Alarms(Enum):
     ETALON_HEATER_UNDER_TEMPERATURE = (0x0011, "Etalon heater under temperature")
 
     @classmethod
-    def from_code(cls, code):
+    def from_code(cls, code) -> list["Alarm"]:
         faults = []
         for fault in cls:
             if code & fault.value[0]:

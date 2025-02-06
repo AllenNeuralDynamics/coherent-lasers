@@ -114,6 +114,17 @@ class CohrHOPSManager:
         return self.serials
 
     def send_command(self, serial: str, command: str) -> str:
+        """Send a command to the device with the given serial number.
+        If the device is not found, it will attempt to rediscover devices.
+        :param serial: The serial number of the device.
+        :param command: The command to send.
+        :type serial: str
+        :type command: str
+        :return: The response from the device.
+        :rtype: str
+        :raises HOPSCommandException: If the command fails.
+        """
+
         def send_cohrhops_command(handle: COHRHOPS_HANDLE, command: str) -> str | None:
             response = C.create_string_buffer(MAX_STRLEN)
             res = self._send_command(handle, command.encode("utf-8"), response)
@@ -149,9 +160,14 @@ class CohrHOPSManager:
             raise HOPSCommandException("Error sending command", command, -500)
 
     async def async_send_command(self, serial: str, command: str) -> str:
-        """
-        Asynchronously sends a command by offloading the blocking call
-        to a thread in the default executor.
+        """Asynchronously sends a command by offloading the blocking call to a thread in the default executor.
+        :param serial: The serial number of the device.
+        :param command: The command to send.
+        :type serial: str
+        :type command: str
+        :return: The response from the device.
+        :rtype: str
+        :raises HOPSCommandException: If the command fails.
         """
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(None, self.send_command, serial, command)
@@ -160,18 +176,6 @@ class CohrHOPSManager:
     def close_device(self, serial: str) -> None:
         with self._lock:
             self._closed_serials.add(serial)
-            # handle = self._serials.get(serial)
-            # if not handle:
-            #     self._log.warning(f"Unable to close device {serial}: not found in active list.")
-            #     return
-            # res = self._close(handle)
-            # if res != COHRHOPS_OK:
-            #     self._log.error(f"Error closing device {serial} (handle {hex(int(handle))}): error code {res}")
-            # else:
-            #     self._log.debug(f"Successfully closed device {serial} (handle {hex(int(handle))}).")
-            # # Remove the handle from our internal list regardless.
-            # if serial in self._serials:
-            #     del self._serials[serial]
 
     def close(self):
         self.log.debug(f"Closing hops manager. {len(self._connections)} handles to close.")
@@ -297,11 +301,26 @@ class CohrHOPSDevice:
 
     def __init__(self, serial: str):
         self.serial = serial
+        self.log = logging.getLogger(f"{__name__}.{serial}")
 
     def send_command(self, command: str) -> str:
+        """Send a command to the device.
+        :param command: The command to send.
+        :type command: str
+        :return: The response from the device.
+        :rtype: str
+        :raises HOPSCommandException: If the command fails.
+        """
         return self._manager.send_command(self.serial, command)
 
     async def async_send_command(self, command: str) -> str:
+        """Anynchronously send a command to the device.
+        :param command: The command to send.
+        :type command: str
+        :return: The response from the device.
+        :rtype: str
+        :raises HOPSCommandException: If the command fails.
+        """
         return await self._manager.async_send_command(self.serial, command)
 
     def close(self):

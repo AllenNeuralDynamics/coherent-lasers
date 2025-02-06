@@ -9,7 +9,7 @@ Setup:
 """
 
 from .lib import HOPSDevice, get_hops_manager, HOPSException
-from .lib2 import CohrHOPSDevice, get_cohrhops_manager, HOPSCommandException
+from .cohrhops import CohrHOPSDevice, get_cohrhops_manager, HOPSCommandException
 
 __all__ = [
     "HOPSDevice",
