@@ -9,13 +9,11 @@ send commands to all discovered devices.
 import asyncio
 import logging
 import random
-import time
 
 from coherent_lasers.hops.lib2 import get_cohrhops_manager, CohrHOPSDevice
-from coherent_lasers.genesis_mx.commands import ReadCmds, WriteCmds, OperationMode, Alarms
+from coherent_lasers.genesis_mx.commands import ReadCmds, WriteCmds
+from dotenv import load_dotenv
 
-
-SERIALS = ["J687424BP914", "A700467EP203", "R708588EQ173"]
 
 # Configure logging for the stress test.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -28,31 +26,16 @@ def log_dll_version():
     logger.info(f"DLL Version: {manager.version}")
 
 
-def test_discovery():
+def test_discovery(expected_serials: list[str]):
     manager = get_cohrhops_manager()
     serials = manager.discover()
-    if missing := [serial for serial in SERIALS if serial not in serials]:
-        logger.error(f"Missing devices: {missing}")
-
-
-def log_manager_info():
-    """
-    Print the DLL version and the serial numbers of all discovered devices.
-    """
-    manager = get_cohrhops_manager()
-    # Force a fresh discovery.
-    try:
-        serials = manager.discover()
-    except Exception as e:
-        logger.error(f"Discovery failed: {e}")
-        return
-
     if not serials:
         logger.error("No devices discovered.")
         return
-
-    logger.info(f"DLL Version: {manager.version}")
-    logger.info(f"Discovered Devices: {serials}")
+    if missing := [serial for serial in expected_serials if serial not in serials]:
+        logger.error(f"Missing devices: {missing}")
+    if extra := [serial for serial in serials if serial not in expected_serials]:
+        logger.error(f"Extra devices: {extra}")
 
 
 async def stress_test_device(device: CohrHOPSDevice, iterations: int = 100):
@@ -132,8 +115,18 @@ async def stress_test_all(iterations: int = 100):
 
 
 if __name__ == "__main__":
+    import os
+
+    load_dotenv()
+
+    GENESIS_MX_SERIALS = []
+
+    if serials := os.getenv("GENESIS_MX_SERIALS"):
+        GENESIS_MX_SERIALS = serials.split(",")
+
     log_dll_version()
-    test_discovery()
+
+    test_discovery(expected_serials=GENESIS_MX_SERIALS)
 
     # iterations = 0
     # start_time = time.time()
