@@ -5,10 +5,6 @@ import os
 import threading
 import time
 
-# Setup logging
-logging.basicConfig(level=logging.ERROR)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
 
 DLL_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -27,7 +23,7 @@ try:
     C.CDLL(find_library("CohrHOPS"))
     C.CDLL(find_library("CohrFTCI2C"))
 except Exception as e:
-    logger.error(f"Error loading 64-bit DLLs: {e}")
+    print(f"Error loading 64-bit DLLs: {e}")
     raise
 
 

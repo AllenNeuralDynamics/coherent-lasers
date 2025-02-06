@@ -17,7 +17,7 @@ import time
 import logging
 from coherent_lasers.genesis_mx.driver import GenesisMX
 from coherent_lasers.genesis_mx.commands import OperationMode, ReadCmds
-from coherent_lasers.hops import HOPSException, get_hops_manager
+from coherent_lasers.hops.lib import HOPSException, get_hops_manager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

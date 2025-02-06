@@ -1,57 +1,53 @@
-"""Coherent Genesis MX commands."""
-
+from dataclasses import dataclass
 from enum import Enum
 
 
-class ReadCmds(Enum):
-    """Genesis MX Read Commands"""
+@dataclass(frozen=True)
+class ReadWrite:
+    read_cmd: str
+    write_cmd: str
 
-    CURRENT_MODE = "?CMODE"  # Read the current mode of the laser: 0 = Photo, 1 = Current
-    FAULT_CODE = "?FF"  # Read the fault code of the laser
-    POWER = "?P"  # Read the current power of the laser
-    POWER_SETPOINT = "?PCMD"  # Read the power setpoint of the laser
-    LDD_CURRENT = "?C"  # Read the current of the laser diode driver
-    LDD_CURRENT_LIMIT = "?CLIM"  # Read the current limit of the laser diode driver
+    def read(self) -> str:
+        return self.read_cmd
 
-    # Temperature and Voltage Signals
-    MAIN_TEMPERATURE = "?TMAIN"  # Read the main temperature of the laser
-    SHG_TEMPERATURE = "?TSHG"
-    BRF_TEMPERATURE = "?TBRF"
-    ETALON_TEMPERATURE = "?TETA"
-    MAIN_TEC_DRIVE = "?MAIND"
-    SHG_HEATER_DRIVE = "?SHGD"
-    BRF_HEATER_DRIVE = "?BRFD"
-    ETALON_HEATER_DRIVE = "?ETAD"
+    def write(self, value) -> str:
+        return f"{self.write_cmd}{value}"
 
-    # Head Information
+
+class ReadWriteCmd(Enum):
+    MODE = ReadWrite(read_cmd="?CMODE", write_cmd="CMODECMD=")
+    POWER_SETPOINT = ReadWrite(read_cmd="?PCMD", write_cmd="PCMD=")
+    NON_VOLATILE_POWER = ReadWrite(read_cmd="?PMEM", write_cmd="PMEM=")  # Not implemented
+    ANALOG_INPUT = ReadWrite(read_cmd="?ANA", write_cmd="ANACMD=")
+    REMOTE_CONTROL = ReadWrite(read_cmd="?REM", write_cmd="REM=")
+    SOFTWARE_SWITCH = ReadWrite(read_cmd="?KSWCMD", write_cmd="KSWCMD=")
+
+    def read(self) -> str:
+        return self.value.read()
+
+    def write(self, value: int | float) -> str:
+        return self.value.write(value=value)
+
+
+class ReadCmd(Enum):
     HEAD_SERIAL = "?HID"
     HEAD_TYPE = "?HTYPE"
     HEAD_HOURS = "?HH"
     HEAD_DIO_STATUS = "?HEADDIO"
     HEAD_BOARD_REVISION = "?HBDREV"
-
-    # Status Signals
+    # Signal Commands
+    POWER = "?P"
+    CURRENT = "?C"
+    MAIN_TEMPERATURE = "?TMAIN"
+    SHG_TEMPERATURE = "?TSHG"
+    BRF_TEMPERATURE = "?TBRF"
+    ETALON_TEMPERATURE = "?TETA"
     INTERLOCK_STATUS = "?INT"
-    KEY_SWITCH_STATE = "?KSW"
-    SOFTWARE_SWITCH_STATE = "?KSWCMD"
-    ANALOG_INPUT_STATUS = "?ANA"
-    LDD_ENABLE_STATE = "?L"
-    REMOTE_CONTROL_STATUS = "?REM"
+    KEY_SWITCH_STATUS = "?KSW"
+    FAULT_CODE = "?FF"
 
-    PSDIO_STATUS = "?PSDIO"
-    PSGLUE_INPUT_STATUS = "?PSGLUEIN"
-    PSGLUE_OUTPUT_STATUS = "?PSGLUEOUT"
-
-
-class WriteCmds(Enum):
-    """Genesis MX Write Commands"""
-
-    SET_POWER = "PCMD="
-    SET_NONVOLATILE_POWER = "PMEM="
-    SET_MODE = "CMODECMD="
-    SET_ANALOG_INPUT = "ANACMD="
-    SET_REMOTE_CONTROL = "REM="
-    SET_SOFTWARE_SWITCH = "KSWCMD="
+    def read(self) -> str:
+        return self.value
 
 
 class OperationMode(Enum):

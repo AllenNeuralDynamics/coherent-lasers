@@ -11,13 +11,12 @@ import time
 
 from dotenv import load_dotenv
 
+from coherent_lasers.genesis import GenesisMX
+
 from coherent_lasers.hops.cohrhops import get_cohrhops_manager
-from coherent_lasers.genesis_mx.driver2 import GenesisMX
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("lib2test")
-
-for log in [logger, get_cohrhops_manager().log]:
-    log.setLevel(logging.INFO)
 
 
 def log_dll_version():
@@ -54,7 +53,7 @@ if __name__ == "__main__":
     mrg = get_cohrhops_manager()
     log_dll_version()
 
-    iterations = 3
+    iterations = 20
     passes = 0
     total_time = 0
     q_total = 0
@@ -86,11 +85,11 @@ if __name__ == "__main__":
                     logger.info(f"  - software Switch: {device.software_switch}")
                     logger.info(f"  - Power Setpoint: {device.power_setpoint}")
                     logger.info(f"  - Power: {device.power}")
-                    # logger.info(f"  - Main Temperature: {device.temperature}")
-                    logger.info(f"  - LDD Current: {device.current}")
-                    logger.info(f"  - Temperatures: {device.get_temperatures()}")
-                    logger.info(f"  - Mode: {device.mode}")
-                    logger.info(f"  - Alarms: {device.alarms}")
+                    logger.info(f"  - Main Temperature: {device.temperature}")
+                    # logger.info(f"  - LDD Current: {device.current}")
+                    # logger.info(f"  - Temperatures: {device.get_temperatures()}")
+                    # logger.info(f"  - Mode: {device.mode}")
+                    # logger.info(f"  - Alarms: {device.alarms}")
                     logger.info(f"  ---- Query time: {time.perf_counter() - q_start:.2f} seconds")
                     q_total += time.perf_counter() - q_start
                     qs += 1

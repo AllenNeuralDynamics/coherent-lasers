@@ -6,9 +6,8 @@ from functools import cached_property
 import logging
 import os
 import threading
-from threading import RLock, Lock
+from threading import RLock
 import time
-
 
 # Make sure prerequisites are met ######################################################################################
 DLL_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +127,7 @@ class HandleCollection:
 class CohrHOPSManager:
     def __init__(self):
         self.log = logging.getLogger(__name__)
-        self._lock = Lock()
+        self._lock = RLock()
         self._dll = C.CDLL(HOPS_DLL)
         self._wrap_dll_functions()
         self._connections: HandleCollection = HandleCollection()
@@ -381,7 +380,7 @@ def get_cohrhops_manager() -> CohrHOPSManager:
                     except HOPSException:
                         msg = f"Error discovering devices: Attempt {attempt + 1} of {attempts}."
                         msg += f" Retrying in {timeout} seconds ..." if attempt < attempts - 1 else ""
-                        _cohrhops_manager_instance.log.error(msg)
+                        _cohrhops_manager_instance.log.debug(msg)
                         if attempt < attempts - 1:
                             time.sleep(timeout)
     return _cohrhops_manager_instance

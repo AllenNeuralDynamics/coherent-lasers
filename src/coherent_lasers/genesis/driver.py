@@ -1,26 +1,9 @@
 from functools import cached_property
 
-from attr import dataclass
-from coherent_lasers.genesis_mx.commands import Alarm, OperationMode, ReadWriteCmd, ReadCmd
-from coherent_lasers.hops.cohrhops import CohrHOPSDevice, HOPSCommandException
-
-
-@dataclass(frozen=True)
-class GenesisMXInfo:
-    serial: str
-    wavelength: int
-    head_type: str | None
-    head_hours: str | None
-    head_dio_status: str | None
-    head_board_revision: str | None
-
-
-@dataclass(frozen=True)
-class GenesisMXTemperature:
-    main: float | None
-    shg: float | None
-    brf: float | None
-    etalon: float | None
+# from dataclasses import dataclass
+from .commands import Alarm, OperationMode, ReadWriteCmd, ReadCmd
+from .base import GenesisMXInfo, GenesisMXTemperature
+from ..hops.cohrhops import CohrHOPSDevice, HOPSCommandException
 
 
 class GenesisMX(CohrHOPSDevice):
@@ -32,6 +15,12 @@ class GenesisMX(CohrHOPSDevice):
 
     @cached_property
     def info(self) -> GenesisMXInfo:
+        """Get the laser's information.
+        This includes the serial number, wavelength, head type, head hours, head DIO status, and head board revision.
+        The information is cached for the lifetime of the object.
+        :return: A GenesisMXInfo object containing the laser's information.
+        :rtype: GenesisMXInfo
+        """
         head_type = self.send_read_command(ReadCmd.HEAD_TYPE)
         return GenesisMXInfo(
             serial=self.serial,
@@ -43,21 +32,30 @@ class GenesisMX(CohrHOPSDevice):
         )
 
     @cached_property
-    def unit_factor(self) -> float:
+    def unit_factor(self) -> int:
+        """Unit factor for the laser's power and power setpoint.
+        Depending on the head_type, the power is returned in W or mW. We use mW as the standard unit.
+        """
         if head_type := self.info.head_type:
             return self.head_type2unit_factor.get(head_type, 1)
         return 1
 
     @property
     def power(self) -> float | None:
-        """Power in mW."""
+        """Power in mW.
+        :return: The power in mW or None if an error occurred.
+        :rtype: float | None
+        """
         if power := self.send_read_float_command(ReadCmd.POWER):
             return power / self.unit_factor
         return None
 
     @property
     def power_setpoint(self) -> float | None:
-        """Power setpoint in mW."""
+        """Power setpoint in mW.
+        :return: The power setpoint in mW or None if an error occurred.
+        :rtype: float | None
+        """
         if power_setpoint := self.send_read_float_command(ReadWriteCmd.POWER_SETPOINT):
             return power_setpoint / self.unit_factor
         return None
@@ -68,12 +66,18 @@ class GenesisMX(CohrHOPSDevice):
 
     @property
     def current(self) -> float | None:
-        """Current in mA."""
+        """Current in mA.
+        :return: The current in mA or None if an error occurred.
+        :rtype: float | None
+        """
         return self.send_read_float_command(ReadCmd.CURRENT)
 
     @property
     def remote_control(self) -> bool | None:
-        """Whether remote control is enabled."""
+        """Whether remote control is enabled.
+        :return: True if enabled, False if disabled, None if an error occurred.
+        :rtype: bool | None
+        """
         return self.send_read_bool_command(ReadWriteCmd.REMOTE_CONTROL)
 
     @remote_control.setter
@@ -82,17 +86,26 @@ class GenesisMX(CohrHOPSDevice):
 
     @property
     def key_switch(self) -> bool | None:
-        """Key switch state."""
+        """Key switch state.
+        :return: True if enabled, False if disabled, None if an error occurred.
+        :rtype: bool | None
+        """
         return self.send_read_bool_command(ReadCmd.KEY_SWITCH_STATUS)
 
     @property
     def interlock(self) -> bool | None:
-        """Interlock state."""
+        """Interlock state.
+        :return: True if enabled, False if disabled, None if an error occurred.
+        :rtype: bool | None
+        """
         return self.send_read_bool_command(ReadCmd.INTERLOCK_STATUS)
 
     @property
     def software_switch(self) -> bool | None:
-        """Software switch state."""
+        """Software switch state.
+        :return: True if enabled, False if disabled, None if an error occurred.
+        :rtype: bool | None
+        """
         return self.send_read_bool_command(ReadWriteCmd.SOFTWARE_SWITCH)
 
     @software_switch.setter
@@ -104,7 +117,10 @@ class GenesisMX(CohrHOPSDevice):
 
     @property
     def is_enabled(self) -> bool | None:
-        """Whether the laser is enabled."""
+        """Whether the laser is enabled.
+        :return: True if enabled, False if disabled, None if an error occurred.
+        :rtype: bool | None
+        """
         return self.interlock and self.key_switch and self.software_switch
 
     def enable(self) -> None:
@@ -129,7 +145,10 @@ class GenesisMX(CohrHOPSDevice):
 
     @property
     def temperature(self) -> float | None:
-        """Main temperature in °C."""
+        """Main temperature in °C.
+        :return: The main temperature in °C or None if an error occurred."
+        :rtype: float | None
+        """
         return self.send_read_float_command(ReadCmd.MAIN_TEMPERATURE)
 
     def get_temperatures(self, include_only: list[str] | None = None) -> GenesisMXTemperature:
@@ -149,7 +168,10 @@ class GenesisMX(CohrHOPSDevice):
 
     @property
     def mode(self) -> OperationMode | None:
-        """Supports CURRENT and PHOTO modes."""
+        """Supports CURRENT and PHOTO modes.
+        :return: The current operation mode or None if an error occurred.
+        :rtype: OperationMode | None
+        """
         if mode := self.send_read_int_command(ReadWriteCmd.MODE) is not None:
             return OperationMode(mode)
         return None
@@ -160,7 +182,10 @@ class GenesisMX(CohrHOPSDevice):
 
     @property
     def alarms(self) -> list[Alarm] | None:
-        """Get the list of active alarms based on the fault code."""
+        """Get the list of active alarms based on the fault code.
+        :return: A list of active alarms or None if an error occurred.
+        :rtype: list[Alarm] | None
+        """
         res = self.send_read_command(ReadCmd.FAULT_CODE)
         if res is not None and (fault_code_value := int(res, 16)):
             faults = Alarm.from_code(fault_code_value)

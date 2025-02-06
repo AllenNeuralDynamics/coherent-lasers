@@ -9,7 +9,7 @@ from coherent_lasers.genesis_mx.commands import (
     OperationMode,
     Alarm,
 )
-from coherent_lasers.hops import HOPSDevice, HOPSException
+from coherent_lasers.hops.lib import HOPSDevice, HOPSException
 
 
 @dataclass(frozen=True)
