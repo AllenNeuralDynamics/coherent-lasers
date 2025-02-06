@@ -1,7 +1,7 @@
 from functools import cached_property
 
 from attr import dataclass
-from coherent_lasers.genesis_mx.commands import OperationMode, ReadWriteCmd, ReadCmd
+from coherent_lasers.genesis_mx.commands import Alarm, OperationMode, ReadWriteCmd, ReadCmd
 from coherent_lasers.hops.cohrhops import CohrHOPSDevice, HOPSCommandException
 
 
@@ -32,12 +32,13 @@ class GenesisMX(CohrHOPSDevice):
 
     @cached_property
     def info(self) -> GenesisMXInfo:
+        head_type = self.send_read_command(ReadCmd.HEAD_TYPE)
         return GenesisMXInfo(
             serial=self.serial,
             wavelength=self.serial2wavelength[self.serial[0]],
-            head_type=self.send_read_command(ReadCmd.HEAD_TYPE),
+            head_type=head_type,
             head_hours=self.send_read_command(ReadCmd.HEAD_HOURS),
-            head_dio_status=self.send_read_command(ReadCmd.HEAD_DIO_STATUS),
+            head_dio_status=None,  # Unreliable command
             head_board_revision=self.send_read_command(ReadCmd.HEAD_BOARD_REVISION),
         )
 
@@ -71,21 +72,21 @@ class GenesisMX(CohrHOPSDevice):
         return self.send_read_float_command(ReadCmd.CURRENT)
 
     @property
-    def remote_control_status(self) -> bool | None:
+    def remote_control(self) -> bool | None:
         """Whether remote control is enabled."""
         return self.send_read_bool_command(ReadWriteCmd.REMOTE_CONTROL)
 
-    @remote_control_status.setter
-    def remote_control_status(self, state: bool) -> None:
+    @remote_control.setter
+    def remote_control(self, state: bool) -> None:
         self.send_write_command(cmd=ReadWriteCmd.REMOTE_CONTROL, value=int(state))
 
     @property
-    def key_switch_status(self) -> bool | None:
+    def key_switch(self) -> bool | None:
         """Key switch state."""
         return self.send_read_bool_command(ReadCmd.KEY_SWITCH_STATUS)
 
     @property
-    def interlock_status(self) -> bool | None:
+    def interlock(self) -> bool | None:
         """Interlock state."""
         return self.send_read_bool_command(ReadCmd.INTERLOCK_STATUS)
 
@@ -96,15 +97,15 @@ class GenesisMX(CohrHOPSDevice):
 
     @software_switch.setter
     def software_switch(self, state: bool) -> None:
-        if not self.interlock_status or not self.key_switch_status:
-            self.log.error(f"Cannot enable: interlock={self.interlock_status}, key_switch={self.key_switch_status}")
+        if not self.interlock or not self.key_switch:
+            self.log.error(f"Cannot enable: interlock={self.interlock}, key_switch={self.key_switch}")
             return
         self.send_write_command(cmd=ReadWriteCmd.SOFTWARE_SWITCH, value=int(state))
 
     @property
     def is_enabled(self) -> bool | None:
         """Whether the laser is enabled."""
-        return self.interlock_status and self.key_switch_status and self.software_switch
+        return self.interlock and self.key_switch and self.software_switch
 
     def enable(self) -> None:
         """Enable the laser. - turns on the software switch. Requires interlock and key switch to be enabled."""
@@ -115,12 +116,15 @@ class GenesisMX(CohrHOPSDevice):
         self.software_switch = False
 
     @property
-    def analog_input_status(self) -> bool | None:
-        """Whether analog input control is enabled."""
+    def analog_input(self) -> bool | None:
+        """Whether analog input control is enabled.
+        :return: True if enabled, False if disabled, None if an error occurred.
+        :rtype: bool | None
+        """
         return self.send_read_bool_command(ReadWriteCmd.ANALOG_INPUT)
 
-    @analog_input_status.setter
-    def analog_input_status(self, state: bool) -> None:
+    @analog_input.setter
+    def analog_input(self, state: bool) -> None:
         self.send_write_command(cmd=ReadWriteCmd.ANALOG_INPUT, value=int(state))
 
     @property
@@ -128,29 +132,39 @@ class GenesisMX(CohrHOPSDevice):
         """Main temperature in °C."""
         return self.send_read_float_command(ReadCmd.MAIN_TEMPERATURE)
 
-    def get_temperatures(self, exclude: list[str] = []) -> GenesisMXTemperature:
+    def get_temperatures(self, include_only: list[str] | None = None) -> GenesisMXTemperature:
         """Get the temperatures of the laser.
 
         :param exclude: List of temperature types to exclude from the result.
         :return: A GenesisMXTemperature object containing the temperatures.
         """
+        temp_types = ["main", "shg", "brf", "etalon"]
+        include = include_only or temp_types
         return GenesisMXTemperature(
-            main=self.send_read_float_command(ReadCmd.MAIN_TEMPERATURE) if "main" not in exclude else None,
-            shg=self.send_read_float_command(ReadCmd.SHG_TEMPERATURE) if "shg" not in exclude else None,
-            brf=self.send_read_float_command(ReadCmd.BRF_TEMPERATURE) if "brf" not in exclude else None,
-            etalon=self.send_read_float_command(ReadCmd.ETALON_TEMPERATURE) if "etalon" not in exclude else None,
+            main=self.send_read_float_command(ReadCmd.MAIN_TEMPERATURE) if "main" in include else None,
+            shg=self.send_read_float_command(ReadCmd.SHG_TEMPERATURE) if "shg" in include else None,
+            brf=self.send_read_float_command(ReadCmd.BRF_TEMPERATURE) if "brf" in include else None,
+            etalon=None,  # Command didn't work for MiniX and Mini00
         )
 
     @property
     def mode(self) -> OperationMode | None:
         """Supports CURRENT and PHOTO modes."""
-        if mode := self.send_read_int_command(ReadWriteCmd.MODE):
+        if mode := self.send_read_int_command(ReadWriteCmd.MODE) is not None:
             return OperationMode(mode)
         return None
 
     @mode.setter
     def mode(self, mode: OperationMode) -> None:
         self.send_write_command(cmd=ReadWriteCmd.MODE, value=mode.value)
+
+    @property
+    def alarms(self) -> list[Alarm] | None:
+        """Get the list of active alarms based on the fault code."""
+        res = self.send_read_command(ReadCmd.FAULT_CODE)
+        if res is not None and (fault_code_value := int(res, 16)):
+            faults = Alarm.from_code(fault_code_value)
+            return faults
 
     def __repr__(self) -> str:
         return f"GenesisMX(serial={self.serial}, wavelength={self.info.wavelength}, head_type={self.info.head_type})"
@@ -169,15 +183,14 @@ class GenesisMX(CohrHOPSDevice):
             self.send_command(command=cmd.write(value))
 
             # 2. Read back the updated value
-            response_str = self.send_command(command=cmd.read())
+            if response_str := self.send_command(command=cmd.read()):
+                # 3. Attempt to parse the response as a float
+                new_value = float(response_str)
 
-            # 3. Attempt to parse the response as a float
-            new_value = float(response_str)
+                if new_value != value:
+                    self.log.warning(f"Write/readback mismatch: {value} != {new_value}")
 
-            if new_value != value:
-                self.log.warning(f"Write/readback mismatch: {value} != {new_value}")
-
-            return new_value
+                return new_value
 
         except (HOPSCommandException, ValueError) as e:
             self.log.error(f"Error during write or readback: {e}")
@@ -193,7 +206,7 @@ class GenesisMX(CohrHOPSDevice):
         try:
             return self.send_command(command=cmd.read())
         except HOPSCommandException as e:
-            self.log.error(f"Error: {e}")
+            self.log.error(e)
             return None
 
     def send_read_bool_command(self, cmd: ReadCmd | ReadWriteCmd) -> bool | None:
@@ -207,7 +220,7 @@ class GenesisMX(CohrHOPSDevice):
             response = self.send_command(command=cmd.read())
             return response == "1"
         except HOPSCommandException as e:
-            self.log.error(f"Error: {e}")
+            self.log.error(e)
             return None
 
     def send_read_float_command(self, cmd: ReadCmd | ReadWriteCmd) -> float | None:
@@ -218,10 +231,10 @@ class GenesisMX(CohrHOPSDevice):
         :rtype: float | None
         """
         try:
-            response = self.send_command(command=cmd.read())
-            return float(response)
+            if response := self.send_command(command=cmd.read()):
+                return float(response)
         except HOPSCommandException as e:
-            self.log.error(f"Error: {e}")
+            self.log.error(e)
             return None
 
     def send_read_int_command(self, cmd: ReadCmd | ReadWriteCmd) -> int | None:
@@ -232,8 +245,8 @@ class GenesisMX(CohrHOPSDevice):
         :rtype: int | None
         """
         try:
-            response = self.send_command(command=cmd.read())
-            return int(response)
+            if response := self.send_command(command=cmd.read()):
+                return int(response)
         except HOPSCommandException as e:
-            self.log.error(f"Error: {e}")
+            self.log.error(e)
             return None

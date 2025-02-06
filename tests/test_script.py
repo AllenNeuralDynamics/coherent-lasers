@@ -16,8 +16,8 @@ from coherent_lasers.genesis_mx.driver2 import GenesisMX
 
 logger = logging.getLogger("lib2test")
 
-for logger in [logger, get_cohrhops_manager().log]:
-    logger.setLevel(logging.INFO)
+for log in [logger, get_cohrhops_manager().log]:
+    log.setLevel(logging.INFO)
 
 
 def log_dll_version():
@@ -25,7 +25,7 @@ def log_dll_version():
     logger.info(f"DLL Version: {manager.version}")
 
 
-def test_discovery(expected_serials: list[str]) -> list[str]:
+def test_discovery(expected_serials: list[str]) -> tuple[list[str], list[str], list[str]]:
     manager = get_cohrhops_manager()
     serials = manager.discover()
     if not serials:
@@ -34,22 +34,11 @@ def test_discovery(expected_serials: list[str]) -> list[str]:
         logger.error(f"Missing devices: {missing}")
     if extra := [serial for serial in serials if serial not in expected_serials]:
         logger.error(f"Extra devices: {extra}")
-    return serials
+    return serials, missing, extra
 
 
 def create_devices(serials: list[str]) -> list[GenesisMX]:
     return [GenesisMX(serial) for serial in serials]
-
-
-# def get_device_head_info(device: CohrHOPSDevice):
-#     """Get the head type and serial number of a device."""
-#     try:
-#         head_type = device.send_read_command(ReadCmds.HEAD_TYPE)
-#         head_serial = device.send_read_command(ReadCmds.HEAD_SERIAL)
-#         return head_type, head_serial
-#     except Exception as e:
-#         logger.error(f"Error getting head info for device {device.serial}: {e}")
-#         return None, None
 
 
 if __name__ == "__main__":
@@ -65,20 +54,66 @@ if __name__ == "__main__":
     mrg = get_cohrhops_manager()
     log_dll_version()
 
-    iterations = 10
+    iterations = 3
     passes = 0
+    total_time = 0
+    q_total = 0
+    qs = 0
+    try:
+        for i in range(iterations):
+            print()
+            logger.info(f"Starting iteration {i + 1}...")
+            try:
+                start_time = time.perf_counter()
+                serials, missing, _ = test_discovery(expected_serials=GENESIS_MX_SERIALS)
+                # logger.info(f"Discovered devices: {serials}")
+                if missing:
+                    raise Exception(f"Missing devices: {missing}")
 
-    for i in range(iterations):
-        logger.info(f"Starting stress test pass {i + 1}...")
-        try:
-            serials = test_discovery(expected_serials=GENESIS_MX_SERIALS)
-            for device in create_devices(serials=serials):
-                logger.info(f"{device} created successfully.")
-            mrg.close()
-            passes += 1
-        except Exception as e:
-            logger.error(f"Test {i + 1} failed: {e}. Retrying in 5 seconds...")
-            time.sleep(5)
-            continue
+                create_start = time.perf_counter()
+                devices = create_devices(serials=serials)
+                for device in devices:
+                    logger.info(f"{device.info.serial} created successfully.")
+                logger.info(f"Created {len(devices)} devices in {time.perf_counter() - create_start:.2f} seconds.")
 
-    logger.info(f"Test completed: {passes}/{iterations} passes.")
+                q_all_start = time.perf_counter()
+                for device in devices:
+                    print()
+                    logger.info(f"{device}.")
+                    q_start = time.perf_counter()
+                    logger.info(f"  - key Switch: {device.key_switch}")
+                    logger.info(f"  - interlock: {device.interlock}")
+                    logger.info(f"  - software Switch: {device.software_switch}")
+                    logger.info(f"  - Power Setpoint: {device.power_setpoint}")
+                    logger.info(f"  - Power: {device.power}")
+                    # logger.info(f"  - Main Temperature: {device.temperature}")
+                    logger.info(f"  - LDD Current: {device.current}")
+                    logger.info(f"  - Temperatures: {device.get_temperatures()}")
+                    logger.info(f"  - Mode: {device.mode}")
+                    logger.info(f"  - Alarms: {device.alarms}")
+                    logger.info(f"  ---- Query time: {time.perf_counter() - q_start:.2f} seconds")
+                    q_total += time.perf_counter() - q_start
+                    qs += 1
+                print()
+                time_taken = time.perf_counter() - start_time
+                total_time += time_taken
+                logger.info(f"Iteration {i + 1} completed in {time_taken:.2f} seconds.")
+                logger.info(f"Total Query time: {time.perf_counter() - q_all_start:.2f} seconds")
+                logger.info(f"Average Query time: {q_total / qs:.2f} seconds.") if qs else None
+                print()
+                passes += 1
+            except Exception as e:
+                logger.error(f"Test {i + 1} failed: {e}. ")
+                continue
+            finally:
+                mrg.close()
+                print()
+
+    except KeyboardInterrupt:
+        logger.info("Test interrupted by user.")
+    finally:
+        mrg.close()
+
+    logger.info(f"  {passes}/{iterations} passes in {total_time:.2f} seconds.")
+    logger.info(f"  Average time per iteration: {total_time / iterations:.2f} seconds.")
+    print()
