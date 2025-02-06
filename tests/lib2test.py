@@ -9,16 +9,17 @@ send commands to all discovered devices.
 import asyncio
 import logging
 import random
+import time
 
-from coherent_lasers.hops.lib2 import get_cohrhops_manager, CohrHOPSDevice
-from coherent_lasers.genesis_mx.commands import ReadCmds, WriteCmds
 from dotenv import load_dotenv
 
+from coherent_lasers.genesis_mx.commands import ReadCmds, WriteCmds
+from coherent_lasers.hops.lib2 import CohrHOPSDevice, get_cohrhops_manager
 
-# Configure logging for the stress test.
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("lib2test")
-logger.setLevel(logging.INFO)
+
+for logger in [logger, get_cohrhops_manager().log]:
+    logger.setLevel(logging.INFO)
 
 
 def log_dll_version():
@@ -26,16 +27,20 @@ def log_dll_version():
     logger.info(f"DLL Version: {manager.version}")
 
 
-def test_discovery(expected_serials: list[str]):
+def test_discovery(expected_serials: list[str]) -> list[str]:
     manager = get_cohrhops_manager()
     serials = manager.discover()
     if not serials:
         logger.error("No devices discovered.")
-        return
     if missing := [serial for serial in expected_serials if serial not in serials]:
         logger.error(f"Missing devices: {missing}")
     if extra := [serial for serial in serials if serial not in expected_serials]:
         logger.error(f"Extra devices: {extra}")
+    return serials
+
+
+def create_devices(serials: list[str]) -> list[CohrHOPSDevice]:
+    return [CohrHOPSDevice(serial) for serial in serials]
 
 
 async def stress_test_device(device: CohrHOPSDevice, iterations: int = 100):
@@ -124,10 +129,27 @@ if __name__ == "__main__":
     if serials := os.getenv("GENESIS_MX_SERIALS"):
         GENESIS_MX_SERIALS = serials.split(",")
 
+    mrg = get_cohrhops_manager()
     log_dll_version()
 
-    test_discovery(expected_serials=GENESIS_MX_SERIALS)
+    iterations = 10
+    passes = 0
 
+    for i in range(iterations):
+        logger.info(f"Starting stress test pass {i + 1}...")
+        try:
+            serials = test_discovery(expected_serials=GENESIS_MX_SERIALS)
+            for device in create_devices(serials=serials):
+                logger.info(f"Device {device.serial} created successfully.")
+            mrg.close()
+            passes += 1
+        except Exception as e:
+            logger.error(f"Test {i + 1} failed: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
+            continue
+
+    logger.info(f"Test completed: {passes}/{iterations} passes.")
+    #
     # iterations = 0
     # start_time = time.time()
     # asyncio.run(stress_test_all(iterations))
