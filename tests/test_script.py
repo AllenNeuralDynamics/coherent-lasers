@@ -45,6 +45,8 @@ if __name__ == "__main__":
 
     load_dotenv()
 
+    TEST_ITERATIONS = int(os.getenv("TEST_ITERATIONS", 1))
+
     GENESIS_MX_SERIALS = []
 
     if serials := os.getenv("GENESIS_MX_SERIALS"):
@@ -53,13 +55,12 @@ if __name__ == "__main__":
     mrg = get_cohrhops_manager()
     log_dll_version()
 
-    iterations = 20
     passes = 0
     total_time = 0
     q_total = 0
     qs = 0
     try:
-        for i in range(iterations):
+        for i in range(TEST_ITERATIONS):
             print()
             logger.info(f"Starting iteration {i + 1}...")
             try:
@@ -75,11 +76,19 @@ if __name__ == "__main__":
                     logger.info(f"{device.info.serial} created successfully.")
                 logger.info(f"Created {len(devices)} devices in {time.perf_counter() - create_start:.2f} seconds.")
 
+                for device in devices:
+                    device.power_setpoint = 5
+                    device.enable()
+
+                for device in devices:
+                    device.await_power()
+
                 q_all_start = time.perf_counter()
                 for device in devices:
                     print()
                     logger.info(f"{device}.")
                     q_start = time.perf_counter()
+                    logger.info(f"  - Remote Control: {device.remote_control}")
                     logger.info(f"  - key Switch: {device.key_switch}")
                     logger.info(f"  - interlock: {device.interlock}")
                     logger.info(f"  - software Switch: {device.software_switch}")
@@ -89,8 +98,9 @@ if __name__ == "__main__":
                     # logger.info(f"  - LDD Current: {device.current}")
                     # logger.info(f"  - Temperatures: {device.get_temperatures()}")
                     # logger.info(f"  - Mode: {device.mode}")
-                    # logger.info(f"  - Alarms: {device.alarms}")
+                    logger.info(f"  - Alarms: {device.alarms}")
                     logger.info(f"  ---- Query time: {time.perf_counter() - q_start:.2f} seconds")
+                    device.close()
                     q_total += time.perf_counter() - q_start
                     qs += 1
                 print()
@@ -113,6 +123,6 @@ if __name__ == "__main__":
     finally:
         mrg.close()
 
-    logger.info(f"  {passes}/{iterations} passes in {total_time:.2f} seconds.")
-    logger.info(f"  Average time per iteration: {total_time / iterations:.2f} seconds.")
+    logger.info(f"  {passes}/{TEST_ITERATIONS} passes in {total_time:.2f} seconds.")
+    logger.info(f"  Average time per iteration: {total_time / TEST_ITERATIONS:.2f} seconds.")
     print()
