@@ -47,6 +47,8 @@ if __name__ == "__main__":
 
     TEST_ITERATIONS = int(os.getenv("TEST_ITERATIONS", 1))
 
+    TEST_ITERATIONS = int(os.getenv("TEST_ITERATIONS", 1))
+
     GENESIS_MX_SERIALS = []
 
     if serials := os.getenv("GENESIS_MX_SERIALS"):
@@ -60,6 +62,7 @@ if __name__ == "__main__":
     q_total = 0
     qs = 0
     try:
+        for i in range(TEST_ITERATIONS):
         for i in range(TEST_ITERATIONS):
             print()
             logger.info(f"Starting iteration {i + 1}...")
@@ -83,11 +86,19 @@ if __name__ == "__main__":
                 for device in devices:
                     device.await_power()
 
+                for device in devices:
+                    device.power_setpoint = 5
+                    device.enable()
+
+                for device in devices:
+                    device.await_power()
+
                 q_all_start = time.perf_counter()
                 for device in devices:
                     print()
                     logger.info(f"{device}.")
                     q_start = time.perf_counter()
+                    logger.info(f"  - Remote Control: {device.remote_control}")
                     logger.info(f"  - Remote Control: {device.remote_control}")
                     logger.info(f"  - key Switch: {device.key_switch}")
                     logger.info(f"  - interlock: {device.interlock}")
@@ -98,6 +109,7 @@ if __name__ == "__main__":
                     # logger.info(f"  - LDD Current: {device.current}")
                     # logger.info(f"  - Temperatures: {device.get_temperatures()}")
                     # logger.info(f"  - Mode: {device.mode}")
+                    logger.info(f"  - Alarms: {device.alarms}")
                     logger.info(f"  - Alarms: {device.alarms}")
                     logger.info(f"  ---- Query time: {time.perf_counter() - q_start:.2f} seconds")
                     device.close()
@@ -123,6 +135,8 @@ if __name__ == "__main__":
     finally:
         mrg.close()
 
+    logger.info(f"  {passes}/{TEST_ITERATIONS} passes in {total_time:.2f} seconds.")
+    logger.info(f"  Average time per iteration: {total_time / TEST_ITERATIONS:.2f} seconds.")
     logger.info(f"  {passes}/{TEST_ITERATIONS} passes in {total_time:.2f} seconds.")
     logger.info(f"  Average time per iteration: {total_time / TEST_ITERATIONS:.2f} seconds.")
     print()
