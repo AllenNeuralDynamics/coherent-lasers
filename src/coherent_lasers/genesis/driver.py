@@ -1,4 +1,5 @@
 from functools import cached_property
+import time
 
 # from dataclasses import dataclass
 from .commands import Alarm, OperationMode, ReadWriteCmd, ReadCmd
@@ -9,9 +10,11 @@ from ..hops.cohrhops import CohrHOPSDevice, HOPSCommandException
 class GenesisMX(CohrHOPSDevice):
     serial2wavelength = {"A": 488, "J": 561, "R": 639}
     head_type2unit_factor = {"MiniX": 1000, "Mini00": 1}
+    WARMUP_TIME = 5
 
     def __init__(self, serial: str) -> None:
         super().__init__(serial=serial)
+        self.reset()
 
     @cached_property
     def info(self) -> GenesisMXInfo:
@@ -47,7 +50,7 @@ class GenesisMX(CohrHOPSDevice):
         :rtype: float | None
         """
         if power := self.send_read_float_command(ReadCmd.POWER):
-            return power / self.unit_factor
+            return power * self.unit_factor
         return None
 
     @property
@@ -57,12 +60,12 @@ class GenesisMX(CohrHOPSDevice):
         :rtype: float | None
         """
         if power_setpoint := self.send_read_float_command(ReadWriteCmd.POWER_SETPOINT):
-            return power_setpoint / self.unit_factor
+            return power_setpoint * self.unit_factor
         return None
 
     @power_setpoint.setter
     def power_setpoint(self, power_setpoint: float) -> None:
-        self.send_write_command(cmd=ReadWriteCmd.POWER_SETPOINT, value=power_setpoint * self.unit_factor)
+        self.send_write_command(cmd=ReadWriteCmd.POWER_SETPOINT, value=power_setpoint / self.unit_factor)
 
     @property
     def current(self) -> float | None:
@@ -78,11 +81,15 @@ class GenesisMX(CohrHOPSDevice):
         :return: True if enabled, False if disabled, None if an error occurred.
         :rtype: bool | None
         """
-        return self.send_read_bool_command(ReadWriteCmd.REMOTE_CONTROL)
+        if self.info.head_type == "MiniX":
+            return self.send_read_bool_command(ReadWriteCmd.REMOTE_CONTROL)
 
     @remote_control.setter
     def remote_control(self, state: bool) -> None:
-        self.send_write_command(cmd=ReadWriteCmd.REMOTE_CONTROL, value=int(state))
+        if self.info.head_type != "MiniX":
+            self.log.debug(f"Remote control not supported for head type: {self.info.head_type}")
+        else:
+            self.send_write_command(cmd=ReadWriteCmd.REMOTE_CONTROL, value=int(state))
 
     @property
     def key_switch(self) -> bool | None:
@@ -110,7 +117,7 @@ class GenesisMX(CohrHOPSDevice):
 
     @software_switch.setter
     def software_switch(self, state: bool) -> None:
-        if not self.interlock or not self.key_switch:
+        if not self.interlock:  # or not self.key_switch:
             self.log.error(f"Cannot enable: interlock={self.interlock}, key_switch={self.key_switch}")
             return
         self.send_write_command(cmd=ReadWriteCmd.SOFTWARE_SWITCH, value=int(state))
@@ -126,10 +133,36 @@ class GenesisMX(CohrHOPSDevice):
     def enable(self) -> None:
         """Enable the laser. - turns on the software switch. Requires interlock and key switch to be enabled."""
         self.software_switch = True
+        time.sleep(self.WARMUP_TIME)
 
     def disable(self) -> None:
         """Disable the laser. - turns off the software switch."""
         self.software_switch = False
+
+    def reset(self) -> None:
+        """Initialize the laser."""
+        self.remote_control = True
+        self.software_switch = False
+        self.software_switch = True
+        self.software_switch = False
+        self.power_setpoint = 0
+
+    def await_power(self) -> None:
+        """Wait for the laser to reach the power setpoint."""
+        max_wait_time = 10
+
+        start_time = time.time()
+        while True:
+            if (
+                self.power is not None
+                and self.power_setpoint is not None
+                and abs(self.power - self.power_setpoint) <= self.power_setpoint * 0.15
+            ):
+                break
+            if time.time() - start_time > max_wait_time:
+                self.log.debug(f"Power did not reach setpoint within {max_wait_time} seconds.")
+                break
+            time.sleep(0.25)
 
     @property
     def analog_input(self) -> bool | None:
@@ -181,21 +214,16 @@ class GenesisMX(CohrHOPSDevice):
         self.send_write_command(cmd=ReadWriteCmd.MODE, value=mode.value)
 
     @property
-    def alarms(self) -> list[Alarm] | None:
-        """Get the list of active alarms based on the fault code.
-        :return: A list of active alarms or None if an error occurred.
-        :rtype: list[Alarm] | None
-        """
+    def alarms(self) -> list[str] | None:
+        """Retrieve active alarms as a list of descriptive strings."""
         res = self.send_read_command(ReadCmd.FAULT_CODE)
-        if res is not None and (fault_code_value := int(res, 16)):
-            faults = Alarm.from_code(fault_code_value)
-            return faults
+        return Alarm.parse(int(res, 16)) if res is not None else None
 
     def __repr__(self) -> str:
         return f"GenesisMX(serial={self.serial}, wavelength={self.info.wavelength}, head_type={self.info.head_type})"
 
     # send commands helper functions
-    def send_write_command(self, cmd: ReadWriteCmd, value: float | int) -> float | None:
+    def send_write_command(self, cmd: ReadWriteCmd, value: float | int, wait: float = 0.0) -> float | None:
         """
         Sends a write command, then reads back the new value from the laser.
 
@@ -207,13 +235,15 @@ class GenesisMX(CohrHOPSDevice):
             # 1. Write the new value
             self.send_command(command=cmd.write(value))
 
+            time.sleep(wait) if wait else None
+
             # 2. Read back the updated value
             if response_str := self.send_command(command=cmd.read()):
                 # 3. Attempt to parse the response as a float
                 new_value = float(response_str)
 
                 if new_value != value:
-                    self.log.warning(f"Write/readback mismatch: {value} != {new_value}")
+                    self.log.debug(f"Write/readback mismatch: {value} != {new_value}")
 
                 return new_value
 

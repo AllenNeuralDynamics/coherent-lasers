@@ -62,28 +62,14 @@ class HeadType(Enum):
 
 class Alarm(Enum):
     NO_FAULT = (0x0000, "No fault")
-    LASER_OVER_TEMPERATURE = (0x0001, "Laser over temperature")
-    LASER_UNDER_TEMPERATURE = (0x0002, "Laser under temperature")
-    OVER_CURRENT = (0x0003, "Over current")
-    UNDER_CURRENT = (0x0004, "Under current")
-    INTERLOCK_OPEN = (0x0005, "Interlock open")
-    COOLANT_FLOW_LOW = (0x0006, "Coolant flow low")
-    POWER_SUPPLY_FAILURE = (0x0007, "Power supply failure")
-    LASER_DIODE_FAILURE = (0x0008, "Laser diode failure")
-    TEC_FAILURE = (0x0009, "TEC failure")
-    LASER_HEAD_OVER_TEMPERATURE = (0x000A, "Laser head over temperature")
-    LASER_HEAD_UNDER_TEMPERATURE = (0x000B, "Laser head under temperature")
-    SHG_HEATER_OVER_TEMPERATURE = (0x000C, "SHG heater over temperature")
-    SHG_HEATER_UNDER_TEMPERATURE = (0x000D, "SHG heater under temperature")
-    BRF_HEATER_OVER_TEMPERATURE = (0x000E, "BRF heater over temperature")
-    BRF_HEATER_UNDER_TEMPERATURE = (0x000F, "BRF heater under temperature")
-    ETALON_HEATER_OVER_TEMPERATURE = (0x0010, "Etalon heater over temperature")
-    ETALON_HEATER_UNDER_TEMPERATURE = (0x0011, "Etalon heater under temperature")
+    MAIN_TEC_ERROR = (0x0008, "Main TEC error")
+    LBO_BRF_TEMP_ERROR = (0x0010, "LBO or BRF temperature not OK")
+    INTERLOCK_FAULT = (0x0020, "Interlock fault")
+    SHUTTER_ERROR = (0x0100, "Shutter error")
+    GLUE_BOARD_ERROR = (0x0200, "Glue board error")
+    LDD_CURRENT_LIMIT = (0x0800, "LDD at current limit")
 
     @classmethod
-    def from_code(cls, code) -> list["Alarm"]:
-        faults = []
-        for fault in cls:
-            if code & fault.value[0]:
-                faults.append(fault)
-        return faults if faults else [cls.NO_FAULT]
+    def parse(cls, code: int) -> list[str]:
+        """Extract active alarm messages from a fault code."""
+        return [fault.value[1] for fault in cls if fault.value[0] & code] or [cls.NO_FAULT.value[1]]
