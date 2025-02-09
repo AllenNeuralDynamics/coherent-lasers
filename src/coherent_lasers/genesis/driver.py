@@ -1,11 +1,9 @@
+import time
 from functools import cached_property
-import time
-import time
 
-# from dataclasses import dataclass
-from .commands import Alarm, OperationMode, ReadWriteCmd, ReadCmd
-from .base import GenesisMXInfo, GenesisMXTemperature
 from ..hops.cohrhops import CohrHOPSDevice, HOPSCommandException
+from .base import GenesisMXInfo, GenesisMXTemperature
+from .commands import Alarm, OperationMode, ReadCmd, ReadWriteCmd
 
 
 class GenesisMX(CohrHOPSDevice):
@@ -16,7 +14,6 @@ class GenesisMX(CohrHOPSDevice):
 
     def __init__(self, serial: str) -> None:
         super().__init__(serial=serial)
-        self.reset()
         self.reset()
 
     @cached_property
@@ -54,8 +51,6 @@ class GenesisMX(CohrHOPSDevice):
         """
         if power := self.send_read_float_command(ReadCmd.POWER):
             return power * self.unit_factor
-            return power * self.unit_factor
-        return None
 
     @property
     def power_setpoint(self) -> float | None:
@@ -65,12 +60,9 @@ class GenesisMX(CohrHOPSDevice):
         """
         if power_setpoint := self.send_read_float_command(ReadWriteCmd.POWER_SETPOINT):
             return power_setpoint * self.unit_factor
-            return power_setpoint * self.unit_factor
-        return None
 
     @power_setpoint.setter
     def power_setpoint(self, power_setpoint: float) -> None:
-        self.send_write_command(cmd=ReadWriteCmd.POWER_SETPOINT, value=power_setpoint / self.unit_factor)
         self.send_write_command(cmd=ReadWriteCmd.POWER_SETPOINT, value=power_setpoint / self.unit_factor)
 
     @property
@@ -89,15 +81,9 @@ class GenesisMX(CohrHOPSDevice):
         """
         if self.info.head_type == "MiniX":
             return self.send_read_bool_command(ReadWriteCmd.REMOTE_CONTROL)
-        if self.info.head_type == "MiniX":
-            return self.send_read_bool_command(ReadWriteCmd.REMOTE_CONTROL)
 
     @remote_control.setter
     def remote_control(self, state: bool) -> None:
-        if self.info.head_type != "MiniX":
-            self.log.debug(f"Remote control not supported for head type: {self.info.head_type}")
-        else:
-            self.send_write_command(cmd=ReadWriteCmd.REMOTE_CONTROL, value=int(state))
         if self.info.head_type != "MiniX":
             self.log.debug(f"Remote control not supported for head type: {self.info.head_type}")
         else:
@@ -129,11 +115,10 @@ class GenesisMX(CohrHOPSDevice):
 
     @software_switch.setter
     def software_switch(self, state: bool) -> None:
-        if not self.interlock:  # or not self.key_switch:
-        if not self.interlock:  # or not self.key_switch:
+        if self.interlock:  # and self.key_switch:
+            self.send_write_command(cmd=ReadWriteCmd.SOFTWARE_SWITCH, value=int(state))
+        else:
             self.log.error(f"Cannot enable: interlock={self.interlock}, key_switch={self.key_switch}")
-            return
-        self.send_write_command(cmd=ReadWriteCmd.SOFTWARE_SWITCH, value=int(state))
 
     @property
     def is_enabled(self) -> bool | None:
@@ -146,7 +131,6 @@ class GenesisMX(CohrHOPSDevice):
     def enable(self) -> None:
         """Enable the laser. - turns on the software switch. Requires interlock and key switch to be enabled."""
         self.software_switch = True
-        time.sleep(self.WARMUP_TIME)
         time.sleep(self.WARMUP_TIME)
 
     def disable(self) -> None:
@@ -224,7 +208,6 @@ class GenesisMX(CohrHOPSDevice):
         """
         if mode := self.send_read_int_command(ReadWriteCmd.MODE) is not None:
             return OperationMode(mode)
-        return None
 
     @mode.setter
     def mode(self, mode: OperationMode) -> None:
@@ -233,17 +216,13 @@ class GenesisMX(CohrHOPSDevice):
     @property
     def alarms(self) -> list[str] | None:
         """Retrieve active alarms as a list of descriptive strings."""
-    def alarms(self) -> list[str] | None:
-        """Retrieve active alarms as a list of descriptive strings."""
         res = self.send_read_command(ReadCmd.FAULT_CODE)
-        return Alarm.parse(int(res, 16)) if res is not None else None
         return Alarm.parse(int(res, 16)) if res is not None else None
 
     def __repr__(self) -> str:
         return f"GenesisMX(serial={self.serial}, wavelength={self.info.wavelength}, head_type={self.info.head_type})"
 
     # send commands helper functions
-    def send_write_command(self, cmd: ReadWriteCmd, value: float | int, wait: float = 0.0) -> float | None:
     def send_write_command(self, cmd: ReadWriteCmd, value: float | int, wait: float = 0.0) -> float | None:
         """
         Sends a write command, then reads back the new value from the laser.
@@ -255,8 +234,6 @@ class GenesisMX(CohrHOPSDevice):
         try:
             # 1. Write the new value
             self.send_command(command=cmd.write(value))
-
-            time.sleep(wait) if wait else None
 
             time.sleep(wait) if wait else None
 

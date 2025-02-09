@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
-"""
-Stress test for Coherent Genesis MX commands.
-This script uses the CohrHOPSManager and CohrHOPSDevice classes
-and the provided ReadCmds and WriteCmds enums to repeatedly
-send commands to all discovered devices.
-"""
-
 import logging
 import time
 
 from dotenv import load_dotenv
 
 from coherent_lasers.genesis import GenesisMX
-
 from coherent_lasers.hops.cohrhops import get_cohrhops_manager
 
 logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("lib2test")
+logger = logging.getLogger("test_script")
 
 
 def log_dll_version():
@@ -24,7 +16,7 @@ def log_dll_version():
     logger.info(f"DLL Version: {manager.version}")
 
 
-def test_discovery(expected_serials: list[str]) -> tuple[list[str], list[str], list[str]]:
+def validate_device_discovery(expected_serials: list[str]) -> tuple[list[str], list[str], list[str]]:
     manager = get_cohrhops_manager()
     serials = manager.discover()
     if not serials:
@@ -46,16 +38,11 @@ if __name__ == "__main__":
     load_dotenv()
 
     TEST_ITERATIONS = int(os.getenv("TEST_ITERATIONS", 1))
-
-    TEST_ITERATIONS = int(os.getenv("TEST_ITERATIONS", 1))
-
-    GENESIS_MX_SERIALS = []
-
-    if serials := os.getenv("GENESIS_MX_SERIALS"):
-        GENESIS_MX_SERIALS = serials.split(",")
+    GENESIS_MX_SERIALS = os.getenv("GENESIS_MX_SERIALS", "").split(",")
 
     mrg = get_cohrhops_manager()
-    log_dll_version()
+
+    logger.info(f"DLL Version: {mrg.version}")
 
     passes = 0
     total_time = 0
@@ -63,13 +50,14 @@ if __name__ == "__main__":
     qs = 0
     try:
         for i in range(TEST_ITERATIONS):
-        for i in range(TEST_ITERATIONS):
             print()
             logger.info(f"Starting iteration {i + 1}...")
             try:
                 start_time = time.perf_counter()
-                serials, missing, _ = test_discovery(expected_serials=GENESIS_MX_SERIALS)
-                # logger.info(f"Discovered devices: {serials}")
+                serials, missing, extra = validate_device_discovery(expected_serials=GENESIS_MX_SERIALS)
+                logger.info(f"Discovered devices: {serials}")
+                if extra:
+                    logger.error(f"Extra devices not listed in .env: {extra}")
                 if missing:
                     raise Exception(f"Missing devices: {missing}")
 
@@ -86,19 +74,11 @@ if __name__ == "__main__":
                 for device in devices:
                     device.await_power()
 
-                for device in devices:
-                    device.power_setpoint = 5
-                    device.enable()
-
-                for device in devices:
-                    device.await_power()
-
                 q_all_start = time.perf_counter()
                 for device in devices:
                     print()
                     logger.info(f"{device}.")
                     q_start = time.perf_counter()
-                    logger.info(f"  - Remote Control: {device.remote_control}")
                     logger.info(f"  - Remote Control: {device.remote_control}")
                     logger.info(f"  - key Switch: {device.key_switch}")
                     logger.info(f"  - interlock: {device.interlock}")
@@ -106,10 +86,9 @@ if __name__ == "__main__":
                     logger.info(f"  - Power Setpoint: {device.power_setpoint}")
                     logger.info(f"  - Power: {device.power}")
                     logger.info(f"  - Main Temperature: {device.temperature}")
-                    # logger.info(f"  - LDD Current: {device.current}")
-                    # logger.info(f"  - Temperatures: {device.get_temperatures()}")
-                    # logger.info(f"  - Mode: {device.mode}")
-                    logger.info(f"  - Alarms: {device.alarms}")
+                    logger.info(f"  - LDD Current: {device.current}")
+                    logger.info(f"  - Temperatures: {device.get_temperatures()}")
+                    logger.info(f"  - Mode: {device.mode}")
                     logger.info(f"  - Alarms: {device.alarms}")
                     logger.info(f"  ---- Query time: {time.perf_counter() - q_start:.2f} seconds")
                     device.close()
@@ -135,8 +114,6 @@ if __name__ == "__main__":
     finally:
         mrg.close()
 
-    logger.info(f"  {passes}/{TEST_ITERATIONS} passes in {total_time:.2f} seconds.")
-    logger.info(f"  Average time per iteration: {total_time / TEST_ITERATIONS:.2f} seconds.")
     logger.info(f"  {passes}/{TEST_ITERATIONS} passes in {total_time:.2f} seconds.")
     logger.info(f"  Average time per iteration: {total_time / TEST_ITERATIONS:.2f} seconds.")
     print()
