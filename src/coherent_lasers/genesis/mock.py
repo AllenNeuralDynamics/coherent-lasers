@@ -3,7 +3,7 @@ import random
 from functools import cached_property
 
 from .commands import Alarm, OperationMode
-from .base import GenesisMXInfo, GenesisMXTemperature
+from .base import GenesisMXInfo, LaserPower, LaserTemperature
 
 
 class GenesisMXMock:
@@ -28,25 +28,26 @@ class GenesisMXMock:
         )
 
     @property
-    def power(self) -> float | None:
-        """Power in mW."""
-        if self.is_enabled:
-            return random.gauss(mu=self._power_setpoint, sigma=0.1)
-        return random.gauss(mu=0, sigma=0.1)
+    def power(self) -> LaserPower:
+        """Power and Power Setpoint in mW.
+        :return: The power in mW or None if an error occurred.
+        :rtype: LaserPower
+        """
+        value = random.gauss(mu=self._power_setpoint, sigma=0.1) if self.is_enabled else random.gauss(mu=0, sigma=0.1)
+        return LaserPower(value=value, setpoint=self._power_setpoint)
 
-    @property
-    def power_setpoint(self) -> float | None:
-        """Power setpoint in mW."""
-        return self._power_setpoint
-
-    @power_setpoint.setter
-    def power_setpoint(self, power_setpoint: float) -> None:
-        self._power_setpoint = power_setpoint
+    @power.setter
+    def power(self, power: float) -> None:
+        """Set the power setpoint in mW.
+        :param power: The power setpoint in mW.
+        :type power: float
+        """
+        self._power_setpoint = power
 
     @property
     def current(self) -> float | None:
         """Current in mA."""
-        return self.power / 1000 * random.uniform(1, 20) if self.power else None
+        return self.power.value or 0 / 1000 * random.uniform(1, 20) if self.power else None
 
     @property
     def remote_control(self) -> bool | None:
@@ -109,7 +110,7 @@ class GenesisMXMock:
         """Main temperature in °C."""
         return random.uniform(20, 30)
 
-    def get_temperatures(self, include_only: list[str] | None = None) -> GenesisMXTemperature:
+    def get_temperatures(self, include_only: list[str] | None = None) -> LaserTemperature:
         """Get the temperatures of the laser.
 
         :param exclude: List of temperature types to exclude from the result.
@@ -117,7 +118,7 @@ class GenesisMXMock:
         """
         temp_types = ["main", "shg", "brf", "etalon"]
         include = include_only or temp_types
-        return GenesisMXTemperature(
+        return LaserTemperature(
             main=random.uniform(20, 30) if "main" in include else None,
             shg=random.uniform(20, 30) if "shg" in include else None,
             brf=random.uniform(20, 30) if "brf" in include else None,

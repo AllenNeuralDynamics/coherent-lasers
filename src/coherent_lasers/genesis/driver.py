@@ -2,14 +2,13 @@ import time
 from functools import cached_property
 
 from ..hops.cohrhops import CohrHOPSDevice, HOPSCommandException
-from .base import GenesisMXInfo, GenesisMXTemperature
+from .base import GenesisMXInfo, LaserTemperature, LaserPower
 from .commands import Alarm, OperationMode, ReadCmd, ReadWriteCmd
 
 
 class GenesisMX(CohrHOPSDevice):
     serial2wavelength = {"A": 488, "J": 561, "R": 639}
     head_type2unit_factor = {"MiniX": 1000, "Mini00": 1}
-    WARMUP_TIME = 5
     WARMUP_TIME = 5
 
     def __init__(self, serial: str) -> None:
@@ -44,26 +43,25 @@ class GenesisMX(CohrHOPSDevice):
         return 1
 
     @property
-    def power(self) -> float | None:
-        """Power in mW.
+    def power(self) -> LaserPower:
+        """Power and Power Setpoint in mW.
         :return: The power in mW or None if an error occurred.
-        :rtype: float | None
+        :rtype: LaserPower
         """
-        if power := self.send_read_float_command(ReadCmd.POWER):
-            return power * self.unit_factor
+        value = self.send_read_float_command(ReadCmd.POWER)
+        setpoint = self.send_read_float_command(ReadWriteCmd.POWER_SETPOINT)
+        return LaserPower(
+            value=value * self.unit_factor if value is not None else None,
+            setpoint=setpoint * self.unit_factor if setpoint is not None else None,
+        )
 
-    @property
-    def power_setpoint(self) -> float | None:
-        """Power setpoint in mW.
-        :return: The power setpoint in mW or None if an error occurred.
-        :rtype: float | None
+    @power.setter
+    def power(self, power: float) -> None:
+        """Set the power setpoint in mW.
+        :param power: The power setpoint in mW.
+        :type power: float
         """
-        if power_setpoint := self.send_read_float_command(ReadWriteCmd.POWER_SETPOINT):
-            return power_setpoint * self.unit_factor
-
-    @power_setpoint.setter
-    def power_setpoint(self, power_setpoint: float) -> None:
-        self.send_write_command(cmd=ReadWriteCmd.POWER_SETPOINT, value=power_setpoint / self.unit_factor)
+        self.send_write_command(cmd=ReadWriteCmd.POWER_SETPOINT, value=power / self.unit_factor)
 
     @property
     def current(self) -> float | None:
@@ -148,17 +146,19 @@ class GenesisMX(CohrHOPSDevice):
         self.software_switch = False
         self.software_switch = True
         self.software_switch = False
-        self.power_setpoint = 0
+        self.power = 0
 
-    def await_power(self) -> None:
+    def await_power(self, max_wait_time: float = 15) -> None:
         """Wait for the laser to reach the power setpoint."""
-        max_wait_time = 15
-
+        if not self.is_enabled:
+            self.log.debug("Not awaiting power. Laser is not enabled.")
+            return
         start_time = time.time()
         while True:
-            if (power := self.power) is not None and (setpoint := self.power_setpoint) is not None:
-                allowed_delta = max(setpoint * 0.15, 1.5)
-                if abs(power - setpoint) <= allowed_delta:
+            power = self.power
+            if power.value is not None and power.setpoint is not None and power.delta is not None:
+                allowed_delta = max(power.setpoint * 0.15, 1.5)
+                if abs(power.delta) <= allowed_delta:
                     break
             if time.time() - start_time > max_wait_time:
                 self.log.debug(f"Power did not reach setpoint within {max_wait_time} seconds.")
@@ -185,7 +185,7 @@ class GenesisMX(CohrHOPSDevice):
         """
         return self.send_read_float_command(ReadCmd.MAIN_TEMPERATURE)
 
-    def get_temperatures(self, include_only: list[str] | None = None) -> GenesisMXTemperature:
+    def get_temperatures(self, include_only: list[str] | None = None) -> LaserTemperature:
         """Get the temperatures of the laser.
 
         :param exclude: List of temperature types to exclude from the result.
@@ -193,7 +193,7 @@ class GenesisMX(CohrHOPSDevice):
         """
         temp_types = ["main", "shg", "brf", "etalon"]
         include = include_only or temp_types
-        return GenesisMXTemperature(
+        return LaserTemperature(
             main=self.send_read_float_command(ReadCmd.MAIN_TEMPERATURE) if "main" in include else None,
             shg=self.send_read_float_command(ReadCmd.SHG_TEMPERATURE) if "shg" in include else None,
             brf=self.send_read_float_command(ReadCmd.BRF_TEMPERATURE) if "brf" in include else None,
@@ -243,7 +243,6 @@ class GenesisMX(CohrHOPSDevice):
                 new_value = float(response_str)
 
                 if new_value != value:
-                    self.log.debug(f"Write/readback mismatch: {value} != {new_value}")
                     self.log.debug(f"Write/readback mismatch: {value} != {new_value}")
 
                 return new_value

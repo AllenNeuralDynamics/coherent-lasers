@@ -20,6 +20,12 @@ h1 {
     font-weight: 350;
 }
 
+button,
+input {
+    font-family: inherit;
+    line-height: 100%;
+}
+
 .text-center {
     text-align: center;
 }

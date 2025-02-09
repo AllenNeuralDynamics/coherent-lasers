@@ -15,29 +15,46 @@ class GenesisMXInfo:
 
 
 @dataclass(frozen=True)
-class GenesisMXTemperature:
+class LaserTemperature:
     main: float | None
     shg: float | None
     brf: float | None
     etalon: float | None
 
 
-class GenesisMXProtocol(Protocol):
+@dataclass(frozen=True)
+class LaserPower:
+    value: float | None
+    setpoint: float | None
+
+    @property
+    def delta(self) -> float | None:
+        if self.value is None or self.setpoint is None:
+            return None
+        return self.value - self.setpoint
+
+
+class GenesisMXLaser(Protocol):
     @cached_property
     def info(self) -> GenesisMXInfo: ...
 
     @property
-    def power(self) -> float | None:
-        """Power in mW."""
+    def power(self) -> LaserPower:
+        """Power and Power Setpoint in mW.
+        :return: The power in mW or None if an error occurred.
+        :rtype: LaserPower
+        """
         ...
 
-    @property
-    def power_setpoint(self) -> float | None:
-        """Power setpoint in mW."""
+    @power.setter
+    def power(self, power: float) -> None:
+        """Set the power setpoint in mW.
+        :param power: The power setpoint in mW.
+        :type power: float
+        """
         ...
 
-    @power_setpoint.setter
-    def power_setpoint(self, power_setpoint: float) -> None: ...
+    def set_power(self, power: float): ...
 
     @property
     def current(self) -> float | None:
@@ -99,7 +116,7 @@ class GenesisMXProtocol(Protocol):
         """Main temperature in °C."""
         ...
 
-    def get_temperatures(self, include_only: list[str] | None = None) -> GenesisMXTemperature:
+    def get_temperatures(self, include_only: list[str] | None = None) -> LaserTemperature:
         """Get the temperatures of the laser.
 
         :param exclude: List of temperature types to exclude from the result.

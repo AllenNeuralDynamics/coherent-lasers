@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 from coherent_lasers.genesis import GenesisMX
 from coherent_lasers.hops.cohrhops import get_cohrhops_manager
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("test_script")
 
 
@@ -39,6 +38,9 @@ if __name__ == "__main__":
 
     TEST_ITERATIONS = int(os.getenv("TEST_ITERATIONS", 1))
     GENESIS_MX_SERIALS = os.getenv("GENESIS_MX_SERIALS", "").split(",")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    logging.basicConfig(level=LOG_LEVEL)
 
     mrg = get_cohrhops_manager()
 
@@ -68,11 +70,11 @@ if __name__ == "__main__":
                 logger.info(f"Created {len(devices)} devices in {time.perf_counter() - create_start:.2f} seconds.")
 
                 for device in devices:
-                    device.power_setpoint = 5
+                    device.power = 50
                     device.enable()
 
                 for device in devices:
-                    device.await_power()
+                    device.await_power(20)
 
                 q_all_start = time.perf_counter()
                 for device in devices:
@@ -83,7 +85,6 @@ if __name__ == "__main__":
                     logger.info(f"  - key Switch: {device.key_switch}")
                     logger.info(f"  - interlock: {device.interlock}")
                     logger.info(f"  - software Switch: {device.software_switch}")
-                    logger.info(f"  - Power Setpoint: {device.power_setpoint}")
                     logger.info(f"  - Power: {device.power}")
                     logger.info(f"  - Main Temperature: {device.temperature}")
                     logger.info(f"  - LDD Current: {device.current}")
