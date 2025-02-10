@@ -24,6 +24,10 @@ button,
 input {
     font-family: inherit;
     line-height: 100%;
+
+    &:focus {
+        outline: none;
+    }
 }
 
 .text-center {

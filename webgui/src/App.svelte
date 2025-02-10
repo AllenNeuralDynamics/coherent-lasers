@@ -1,146 +1,64 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import LaserLogo from "/laser-logo.svg";
-  // Define types based on the FastAPI status response.
-  interface PowerStatus {
-    value: number | null;
-    setpoint: number | null;
-  }
-
-  interface DeviceStatus {
-    remote_control: boolean | null;
-    key_switch: boolean | null;
-    interlock: boolean | null;
-    software_switch: boolean | null;
-    power: PowerStatus;
-    temperature: number | null;
-    current: number | null;
-    mode: number | null;
-    alarms: string[] | null;
-  }
-
-  let devices = $state<string[]>([]);
-  let statuses = $state<Record<string, DeviceStatus | null>>({});
-  let error = $state<string | null>(null);
+  import * as d3 from "d3";
+  import { laserPowerChart } from "./chart.svelte";
+  import { Laser } from "./laser.svelte";
 
   const API_BASE: string = "http://localhost:8000/api";
+  const MIN_POWER = 0;
 
-  async function fetchDevices(): Promise<string[]> {
+  // State
+  let lasers = $state<Laser[]>([]);
+  let maxPower = $state<number>(10);
+  let powerLimit = $state<number>(1000);
+  let loading = $state<boolean>(false);
+
+  async function fetchLasers(): Promise<Laser[]> {
+    untrack(() => {
+      lasers.forEach((laser) => laser.unsubscribe());
+      lasers = [];
+      loading = true;
+    });
     const res = await fetch(`${API_BASE}/devices`);
     if (!res.ok) {
       throw new Error("Failed to fetch devices.");
     }
-    devices = await res.json();
-    if (devices.length > 0) {
-      devices.forEach((serial) => fetchStatus(serial));
+    const serials = await res.json();
+    console.log("serials: ", serials);
+    lasers = serials.map((serial: string) => new Laser(serial));
+    loading = false;
+    return lasers;
+  }
+
+  function getIndicatorColor(prop: boolean | null | undefined): string {
+    if (prop === null || prop === undefined) {
+      return "var(--zinc-500)";
     }
-    return devices;
+    return prop ? "var(--emerald-500)" : "var(--rose-500)";
   }
 
-  async function fetchStatus(serial: string): Promise<void> {
-    invalidateStatus(serial);
-    try {
-      const res = await fetch(`${API_BASE}/device/${serial}/status`);
-      if (!res.ok) {
-        throw new Error(`Failed to fetch status for device ${serial}.`);
-      }
-      // const status = await res.json();
-      // if (status) {
-      //   statuses[serial] = status;
-      // }
-      await updateStatus(serial, res);
-    } catch (err: any) {
-      error = err.message;
-    }
-  }
+  $effect(() => {
+    const MIN_RANGE = 10;
+    const INCREMENT = 10;
+    const maxValues = lasers.flatMap((laser) => [
+      d3.max(laser.history, (d) => d.power.value) ?? 0,
+      d3.max(laser.history, (d) => d.power.setpoint) ?? 0,
+    ]);
 
-  function invalidateStatus(serial: string): void {
-    const currentStatus = { ...statuses[serial] };
-    statuses[serial] = null;
-  }
-
-  async function updateStatus(
-    serial: string,
-    response: Response
-  ): Promise<void> {
-    const newStatus = await response.json();
-    if (newStatus) {
-      statuses[serial] = newStatus;
-    }
-  }
-
-  async function sendLaserCommand(
-    serial: string,
-    command: string
-  ): Promise<void> {
-    const res = await fetch(`${API_BASE}/device/${serial}/${command}`, {
-      method: "POST",
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to ${command} device ${serial}.`);
-    }
-    updateStatus(serial, res);
-  }
-
-  async function enableLaser(serial: string): Promise<void> {
-    invalidateStatus(serial);
-    await sendLaserCommand(serial, "enable");
-  }
-
-  async function disableLaser(serial: string): Promise<void> {
-    invalidateStatus(serial);
-    await sendLaserCommand(serial, "disable");
-  }
-
-  async function setLaserPower(serial: string, power: number): Promise<void> {
-    invalidateStatus(serial);
-    const res = await fetch(`${API_BASE}/device/${serial}/power`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ power }),
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to set power for device ${serial}.`);
-    }
-    await updateStatus(serial, res);
-  }
-  function handleSetLaserPowerInput(e: Event): void {
-    const input = e.target as HTMLInputElement;
-    const serial = input.dataset.serial;
-    if (serial) {
-      const value = Math.min(
-        Math.max(parseFloat(input.value), parseInt(input.min)),
-        parseInt(input.max)
-      );
-      input.value = value.toString();
-      setLaserPower(serial, value);
-    }
-  }
+    const collectiveMax = Math.max(...maxValues);
+    const closestMultiple = Math.ceil(collectiveMax / INCREMENT) * INCREMENT;
+    maxPower = Math.max(closestMultiple, MIN_POWER + MIN_RANGE);
+  });
 </script>
 
-{#snippet reloadIcon()}
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="18"
-    height="18"
-    viewBox="0 0 15 15"
-  >
-    <path
-      fill="currentColor"
-      fill-rule="evenodd"
-      d="M1.85 7.5c0-2.835 2.21-5.65 5.65-5.65c2.778 0 4.152 2.056 4.737 3.15H10.5a.5.5 0 0 0 0 1h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-1 0v1.813C12.296 3.071 10.666.85 7.5.85C3.437.85.85 4.185.85 7.5s2.587 6.65 6.65 6.65c1.944 0 3.562-.77 4.714-1.942a6.8 6.8 0 0 0 1.428-2.167a.5.5 0 1 0-.925-.38a5.8 5.8 0 0 1-1.216 1.846c-.971.99-2.336 1.643-4.001 1.643c-3.44 0-5.65-2.815-5.65-5.65"
-      clip-rule="evenodd"
-    />
-  </svg>
-{/snippet}
-
-{#snippet spinner()}
+{#snippet spinner(className: string = "")}
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="24"
     height="24"
     viewBox="0 0 24 24"
+    class={className}
   >
     <circle cx="12" cy="12" r="0" fill="currentColor">
       <animate
@@ -163,62 +81,214 @@
   </svg>
 {/snippet}
 
-{#snippet laserCard(serial: string)}
+{#snippet laserCard(laser: Laser)}
   <div class="laser-card">
     <div class="header">
-      <h2 class="text-md zinc-400">{serial}</h2>
-      <button onclick={() => fetchStatus(serial)}>Refresh</button>
+      <h2 class="text-md zinc-400">{laser.serial}</h2>
+      <div class="quick-controls">
+        {#if laser.status}
+          <button
+            aria-label="Toggle Remote Control"
+            class="remote-control"
+            disabled={laser.status.remote_control === null}
+            style:--btn-accent={laser.status.remote_control == null
+              ? "var(--zinc-500)"
+              : laser.status.remote_control
+                ? "var(--emerald-500)"
+                : "var(--rose-500)"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+            >
+              <title>Remote Control</title>
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="m7 12l4.95 4.95L22.557 6.343M2.05 12.05L7 17M17.606 6.394l-5.303 5.303"
+              />
+            </svg>
+          </button>
+        {/if}
+        <button
+          onclick={() => laser.refreshStatus()}
+          aria-label="Refresh laser status"
+          class="refresh"
+          style:--btn-accent={laser.status == null
+            ? "var(--rose-500)"
+            : "var(--emerald-500)"}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+          >
+            <title>Refresh</title>
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M10 16H5v5m9-13h5V3M4.583 9.003a8 8 0 0 1 14.331-1.027m.504 7.021a8 8 0 0 1-14.332 1.027"
+            />
+          </svg>
+        </button>
+      </div>
     </div>
-    <div class="status">
-      {#if statuses[serial]}
-        <pre>{JSON.stringify(statuses[serial], null, 2)}</pre>
+    <div class="enable-loop">
+      <div style:--indicator={getIndicatorColor(laser.status?.software_switch)}>
+        <h3 class="label">Software</h3>
+        <div class="indicator"></div>
+      </div>
+      <div style:--indicator={getIndicatorColor(laser.status?.key_switch)}>
+        <h3 class="label">Key</h3>
+        <div class="indicator"></div>
+      </div>
+      <div style:--indicator={getIndicatorColor(laser.status?.interlock)}>
+        <h3 class="label">Interlock</h3>
+        <div class="indicator"></div>
+      </div>
+    </div>
+    <div class="power">
+      {#if laser.connected && laser.history.length > 1}
+        <div class="chart-container">
+          <svg
+            use:laserPowerChart={{
+              laser: laser,
+              getPowerRange: () => [MIN_POWER, maxPower],
+            }}
+          ></svg>
+        </div>
       {:else}
-        <div>{@render spinner()}</div>
+        <div class="chart-placeholder">
+          {@render spinner()}
+        </div>
       {/if}
-      <button onclick={() => fetchStatus(serial)}>
-        {@render reloadIcon()}
-      </button>
+      <div class="properties">
+        <div class="power-value property">
+          <h3>Power</h3>
+          <p>{laser.power.value?.toFixed(2) ?? "--"} <small>mW</small></p>
+        </div>
+        <div class="power-setpoint property">
+          <h3>Setpoint</h3>
+          <p>{laser.power.setpoint?.toFixed(2) ?? "--"} <small>mW</small></p>
+        </div>
+        <div class="current property">
+          <h3>Current</h3>
+          <p>{laser.status?.current?.toFixed(2) ?? "--"} <small>A</small></p>
+        </div>
+        <div class="temperature property">
+          <h3>Temp</h3>
+          <p>
+            {laser.status?.temperature?.toFixed(2) ?? "--"} <small>℃</small>
+          </p>
+        </div>
+      </div>
     </div>
-    <div class="controls">
-      <button class="enable-button" onclick={() => enableLaser(serial)}>
-        Enable
-      </button>
-      <button class="disable-button" onclick={() => disableLaser(serial)}>
-        Disable
-      </button>
-      <input
-        type="number"
-        data-serial={serial}
-        min="0"
-        max="100"
-        step="1"
-        value={statuses[serial]?.power.setpoint}
-        disabled={!statuses[serial] || statuses[serial].power.setpoint === null}
-        onchange={handleSetLaserPowerInput}
-        onclick={(e) => {
-          const target = e.target as HTMLInputElement;
-          target && target.select();
-        }}
-      />
+
+    <div class="footer">
+      <div class="controls">
+        <button
+          class="enable-button"
+          class:enabling={laser.enabling}
+          onclick={() => laser.enable()}
+        >
+          <span> Enable </span>
+          {#if laser.enabling}
+            {@render spinner("indicator")}
+          {/if}
+        </button>
+        <button class="disable-button" onclick={() => laser.disable()}>
+          <span>Disable</span>
+        </button>
+        <input
+          type="number"
+          data-serial={laser.serial}
+          min="0"
+          max={powerLimit}
+          step="1"
+          value={laser.power.setpoint}
+          disabled={!laser.status || laser.status.power.setpoint === null}
+          onchange={(e) => {
+            const target = e.target as HTMLInputElement;
+            const value = Math.min(
+              Math.max(parseFloat(target.value), parseInt(target.min)),
+              parseInt(target.max)
+            );
+            target.value = value.toString();
+            laser.setPower(value);
+          }}
+          onclick={(e) => {
+            const target = e.target as HTMLInputElement;
+            target && target.select();
+          }}
+        />
+      </div>
     </div>
   </div>
 {/snippet}
 
 <main>
-  <div class="header">
+  <section class="header">
     <div class="app-name">
       <img src={LaserLogo} class="logo" alt="Laser Logo" />
       <h1>Genesis MX</h1>
     </div>
-  </div>
+    <div class="app-controls">
+      <div class="input">
+        <label for="power-limit">Power Limit (mW)</label>
+        <input
+          name="power-limit"
+          type="number"
+          min="10"
+          max="1000"
+          step="10"
+          bind:value={powerLimit}
+          onchange={(e) => {
+            const target = e.target as HTMLInputElement;
+            const value = Math.min(
+              Math.max(parseFloat(target.value), parseInt(target.min)),
+              parseInt(target.max)
+            );
+            target.value = value.toString();
+            powerLimit = value;
+            lasers.forEach((laser) => {
+              if (
+                laser.power.setpoint !== undefined &&
+                laser.power.setpoint > powerLimit
+              ) {
+                laser.setPower(powerLimit * 0.8);
+              }
+            });
+          }}
+        />
+      </div>
+      <button onclick={() => fetchLasers()}>Refresh</button>
+    </div>
+  </section>
   <section class="laser-cards">
-    {#await fetchDevices()}
-      <p>Loading devices...</p>
-    {:then devices}
-      {#if devices.length === 0}
+    {#await fetchLasers()}
+      <div>
+        {@render spinner()}
+        <p>Loading devices...</p>
+      </div>
+    {:then _}
+      {#if loading}
+        <div>
+          {@render spinner()}
+          <p>Loading devices...</p>
+        </div>
+      {:else if lasers.length === 0}
         <p>No devices found.</p>
       {:else}
-        {#each devices as laser}
+        {#each lasers as laser}
           {@render laserCard(laser)}
         {/each}
       {/if}
@@ -230,11 +300,60 @@
 
 <style>
   main {
+    max-width: 88rem;
+    margin-inline: auto;
     padding: 1rem;
+    input[type="number"]::-webkit-inner-spin-button {
+      appearance: none;
+    }
     > .header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      .app-controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      button,
+      input {
+        padding-inline: 1rem;
+        height: 2rem;
+        text-align: center;
+        font-size: var(--font-md);
+        line-height: 100%;
+        font-weight: 300;
+      }
+      label {
+        font-size: var(--font-sm);
+        color: var(--zinc-400);
+        margin-inline-end: 0.5rem;
+      }
+      button {
+        /* padding: 0.65rem 1rem; */
+        border-radius: 0.25rem;
+        border: 1px solid var(--zinc-700);
+        background-color: var(--zinc-800);
+        transition:
+          color 0.3s,
+          background-color 0.3s;
+        &:hover {
+          background-color: var(--yellow-500);
+          color: var(--zinc-900);
+        }
+      }
+      input {
+        width: 5rem;
+        padding: 0.5rem;
+        border-radius: 0.25rem;
+        border: 1px solid var(--zinc-700);
+        background-color: var(--zinc-800);
+        transition: border-color 0.3s;
+        &:hover,
+        &:focus {
+          border-color: var(--zinc-600);
+        }
+      }
     }
     .app-name {
       display: flex;
@@ -254,113 +373,222 @@
   }
   .laser-card {
     --padding: 1rem;
+    --card-border: 1px solid var(--zinc-700);
     border: 1px solid var(--zinc-700);
-    border-radius: 4px;
-    padding-block-end: var(--padding);
+    border-radius: 0.25rem;
+    overflow: hidden;
     display: grid;
-    grid-template-rows: auto minmax(24rem, 1fr) auto;
+    grid-template-rows: repeat(4, max-content);
     .header {
-      padding-inline: var(--padding);
-      padding-block: 0.5rem;
+      background-color: var(--zinc-900);
+      /* border-block-end: var(--card-border); */
+      padding-inline: var(--padding) calc(var(--padding) - 0.25rem);
+      height: 2.5rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid var(--zinc-700);
-      h2 {
-        margin: 0;
-      }
-      button {
-        background-color: var(--zinc-800);
-        color: var(--zinc-300);
-        border: none;
-        padding: 0.5rem;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      button:hover {
-        background-color: var(--zinc-700);
-      }
-    }
 
-    .status {
-      padding: 1rem;
-      margin: 1rem;
-      border: 1px solid var(--zinc-800);
-      background-color: var(--zinc-900);
-      border-radius: 4px;
-      position: relative;
-      button {
-        position: absolute;
-        right: 0.5rem;
-        top: 0.5rem;
-        color: var(--emerald-400);
-        transition: color 0.3s;
-        padding: 0.5rem;
-        border-radius: 50%;
-        &:hover {
-          color: var(--yellow-500);
-          background-color: var(--zinc-800);
-        }
-        &:focus-visible {
-          outline: none;
+      .quick-controls {
+        display: flex;
+        gap: 0.25rem;
+        button {
+          width: 2rem;
+          aspect-ratio: 1;
+          border-radius: 50%;
+          border: none;
+          cursor: pointer;
+          background-color: transparent;
+          transition: background-color 0.3s;
+          color: var(--btn-accent, var(--zinc-500));
+          &:disabled {
+            cursor: var(--not-allowed-cursor, not-allowed);
+          }
+          &:not(:disabled):hover {
+            background-color: var(--zinc-800);
+          }
         }
       }
     }
-
-    .controls {
-      display: grid;
-      grid-template-columns: 1fr 1fr 2fr;
-      gap: 1rem;
+    .enable-loop {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+      background-color: var(--zinc-950);
       padding-inline: var(--padding);
-      button,
-      input {
-        color: var(--zinc-50);
-        font-size: var(--font-md);
-        font-weight: 400;
-        padding: 0.5rem;
-        border-radius: 4px;
-        border: 1px solid var(--color);
-        &:focus-visible {
-          outline: none;
+      padding-block: var(--padding);
+      border-block-end: var(--card-border);
+      > div {
+        display: flex;
+        align-items: center;
+        flex-direction: row-reverse;
+        gap: 0.5rem;
+        padding: 0.125rem 0.5rem;
+        width: 7rem;
+        --border-color: color-mix(
+          in srgb,
+          var(--indicator, var(--zinc-500)) 50%,
+          transparent
+        );
+        background-color: color-mix(
+          in srgb,
+          var(--indicator, var(--zinc-500)) 10%,
+          transparent
+        );
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        overflow: hidden;
+        .label {
+          font-size: var(--font-sm);
+          font-weight: 500;
+          color: var(--zinc-400);
+          color: var(--indicator, var(--zinc-500));
+          flex: 1;
+        }
+        .indicator {
+          width: 1rem;
+          aspect-ratio: 1;
+          border-radius: 50%;
+          background-color: var(--indicator, var(--zinc-500));
         }
       }
-      input {
-        --color: var(--zinc-600);
-        background-color: var(--zinc-900);
-        text-align: center;
-        transition: border-color 0.3s;
-        &:hover,
-        &:focus {
-          --color: var(--zinc-400);
-        }
-        &:disabled {
-          /* color: transparent; */
-          background-color: var(--zinc-900);
-          cursor: not-allowed;
-          opacity: 0.5;
-        }
-        &::-webkit-inner-spin-button {
-          appearance: none;
+    }
+    .power {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      margin-inline-end: var(--padding);
+      .power-setpoint {
+        color: var(--yellow-400);
+      }
+      .power-value {
+        color: var(--cyan-400);
+      }
+      .properties {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding-inline: 0.25rem;
+        padding-top: 20px;
+        padding-bottom: 25px;
+        height: clamp(12rem, 16vw, 16rem);
+        height: max-content;
+        gap: 0.25rem;
+        .property {
+          display: flex;
+          flex-direction: column;
+          font-size: var(--font-sm);
+          padding-block: 0.25rem;
+          border-block-start: 1px solid var(--zinc-700);
+          &:last-child {
+            border-block-end: 1px solid var(--zinc-700);
+          }
+          h3 {
+            font-size: var(--font-xs);
+            font-weight: 500;
+            color: var(--zinc-400);
+          }
+          p {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+          }
         }
       }
-      button {
-        cursor: pointer;
-        background-color: transparent;
-        transition: background-color 0.3s;
-        &.enable-button {
-          --color: var(--lime-700);
+      .chart-placeholder {
+        display: grid;
+        place-content: center;
+        color: var(--zinc-500);
+        background-color: color-mix(
+          in srgb,
+          var(--zinc-900) 50%,
+          var(--zinc-800)
+        );
+        border-radius: 0.25rem;
+        filter: blur(1px);
+        margin: calc(var(--padding) + 0.25rem);
+      }
+      .chart-container {
+        height: clamp(12rem, 16vw, 16rem);
+        height: 100%;
+        display: flex;
+        > svg {
+          flex: 1;
+          height: 100%;
         }
-        &.disable-button {
-          --color: var(--rose-700);
-        }
-        &:hover {
-          background-color: var(--color);
+      }
+    }
+    .footer {
+      background-color: var(--zinc-900);
+      .controls {
+        display: grid;
+        grid-template-columns: 2fr 2fr 3fr;
+        gap: 1rem;
+        padding: var(--padding);
+        button,
+        input {
           color: var(--zinc-50);
+          font-size: var(--font-md);
+          font-weight: 400;
+          height: 2rem;
+          border-radius: 0.25rem;
+          border: 1px solid var(--color);
+        }
+        input {
+          --color: var(--yellow-400);
+          background-color: var(--zinc-900);
+          text-align: center;
+          transition: border-color 0.3s;
+          &:hover,
+          &:focus {
+            --color: var(--yellow-600);
+          }
+          &:disabled {
+            background-color: var(--zinc-900);
+            cursor: not-allowed;
+            opacity: 0.5;
+          }
+        }
+        button {
+          cursor: pointer;
+          user-select: none;
+          background-color: transparent;
+          transition: background-color 0.3s;
+          background-color: color-mix(in srgb, var(--color) 15%, transparent);
+          position: relative;
+          padding-inline: 0.5rem;
+          &.enable-button {
+            --color: var(--cyan-700);
+          }
+          &.enable-button.enabling {
+            pointer-events: none;
+            cursor: var(--not-allowed-cursor);
+            color: var(--color);
+            overflow: hidden;
+            span {
+              opacity: 0;
+            }
+          }
+          &.disable-button {
+            --color: var(--rose-700);
+          }
+          &:hover {
+            background-color: var(--color);
+            color: var(--zinc-50);
+          }
+          .indicator {
+            width: 2rem;
+            aspect-ratio: 1;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+          }
         }
       }
     }
   }
   .error {
-    color: red;
+    color: var(--rose-600);
   }
 </style>

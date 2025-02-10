@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 import asyncio
 import logging
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from collections.abc import Generator
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import asynccontextmanager, run_in_threadpool
 from pydantic import BaseModel
 import uvicorn
@@ -20,33 +18,6 @@ logger = logging.getLogger("laser_api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 DEVICES: dict[str, GenesisMX] = {}
-
-
-# Use a safe initializer to mark threads as daemon.
-def safe_set_daemon():
-    try:
-        threading.current_thread().daemon = True
-    except Exception as e:
-        logger.warning(f"Failed to set thread as daemon: {e}")
-
-
-# Create a thread pool for running blocking device calls.
-# executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="daemon", initializer=safe_set_daemon)
-
-
-# async def run_blocking(func, *args, **kwargs):
-#     loop = asyncio.get_running_loop()
-#     return await loop.run_in_executor(executor, func, *args, **kwargs)
-
-
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     """Lifespan event for FastAPI app: Initializes lasers and starts background tasks."""
-#     run_discovery()
-#     yield
-#     # executor.shutdown(wait=False)
-#     get_cohrhops_manager().close()
-#     # logger.info("Executor shutdown, cleaning up.")
 
 
 def run_discovery():
@@ -121,9 +92,9 @@ def get_manager() -> Generator[CohrHOPSManager, Any, None]:
         pass
 
 
-# ---------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Dependency: Get a GenesisMX device for a given serial.
-# ---------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_device(serial: str) -> GenesisMX:
     try:
         if serial not in DEVICES:
@@ -136,9 +107,9 @@ def get_device(serial: str) -> GenesisMX:
         raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found: {e}")
 
 
-# ---------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # API Endpoints
-# ---------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @app.get("/api/devices", response_model=list[str])
 async def list_devices():
     """
@@ -152,11 +123,7 @@ async def list_devices():
     return serials
 
 
-@app.get("/api/device/{serial}/status", response_model=StatusResponse)
-async def get_status(serial: str):
-    """
-    Retrieve a detailed status report from the device.
-    """
+def get_device_status(serial: str) -> StatusResponse:
     device = get_device(serial)
     power = device.power
     mode = device.mode
@@ -173,11 +140,26 @@ async def get_status(serial: str):
     )
 
 
+def get_device_power(serial: str) -> PowerStatus:
+    device = get_device(serial)
+    power = device.power
+    return PowerStatus(value=power.value, setpoint=power.setpoint)
+
+
+@app.get("/api/device/{serial}/status", response_model=StatusResponse)
+async def get_status(serial: str):
+    """
+    Retrieve a detailed status report from the device.
+    """
+    return await run_in_threadpool(get_device_status, serial)
+
+
 @app.post("/api/device/{serial}/enable", response_model=StatusResponse)
 async def enable_device(serial: str):
     """Enable the device."""
     device = get_device(serial)
-    device.enable()
+    await run_in_threadpool(device.enable)
+    # device.enable()
     return await get_status(serial)
 
 
@@ -197,65 +179,119 @@ async def set_power(serial: str, request: SetPowerRequest):
     return await get_status(serial)
 
 
-# @app.get("/api/device/{serial}/status", response_model=StatusResponse)
-# async def get_status(serial: str):
-#     """
-#     Retrieve a detailed status report from the device.
-#     """
-#     device = get_device(serial)
-#     remote_control = await run_blocking(lambda: device.remote_control)
-#     key_switch = await run_blocking(lambda: device.key_switch)
-#     interlock = await run_blocking(lambda: device.interlock)
-#     software_switch = await run_blocking(lambda: device.software_switch)
-#     power = await run_blocking(lambda: device.power)
-#     temperature = await run_blocking(lambda: device.temperature)
-#     current = await run_blocking(lambda: device.current)
-#     mode = await run_blocking(lambda: device.mode)
-#     alarms = await run_blocking(lambda: device.alarms)
-#     return StatusResponse(
-#         remote_control=remote_control,
-#         key_switch=key_switch,
-#         interlock=interlock,
-#         software_switch=software_switch,
-#         power=PowerStatus(value=power.value, setpoint=power.setpoint),
-#         temperature=temperature,
-#         current=current,
-#         mode=mode.value if mode else None,
-#         alarms=alarms,
-#     )
+class wsManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
 
-# @app.post("/api/device/{serial}/enable", response_model=StatusResponse)
-# async def enable_device(serial: str):
-#     """Enable the device."""
-#     device = get_device(serial)
-#     await run_blocking(lambda: device.enable())
-#     return await get_status(serial)
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info(f"Connected. Total connections: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            logger.info(f"Disconnected. Total connections: {len(self.active_connections)}")
+
+    async def broadcast(self, message: dict):
+        # Use a copy of the list so we can safely remove connections if needed.
+        for connection in list(self.active_connections):
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error sending message: {e}")
+                self.disconnect(connection)
 
 
-# @app.post("/api/device/{serial}/disable", response_model=StatusResponse)
-# async def disable_device(serial: str):
-#     """Disable the device."""
-#     device = get_device(serial)
-#     await run_blocking(lambda: device.disable())
-#     return await get_status(serial)
+ws_managers: dict[str, wsManager] = {}
 
 
-# @app.post("/api/device/{serial}/power", response_model=StatusResponse)
-# async def set_power(serial: str, request: SetPowerRequest):
-#     """Set the power of the device."""
+# @app.websocket("/ws/device/{serial}")
+# async def device_ws(websocket: WebSocket, serial: str):
+#     if serial not in ws_managers:
+#         ws_managers[serial] = wsManager()
+#     ws_manager = ws_managers[serial]
 
-#     def set_power():
-#         get_device(serial).power = request.power
+#     await ws_manager.connect(websocket)
+#     counter = 0
+#     try:
+#         while True:
+#             power = get_device_power(serial)
+#             power_update = {
+#                 "type": "power_update",
+#                 "data": {
+#                     "value": power.value,
+#                     "setpoint": power.setpoint,
+#                 },
+#             }
+#             await ws_manager.broadcast(power_update)
 
-#     await run_blocking(set_power)
-#     return await get_status(serial)
+#             counter += 1
+#             if counter % 10 == 0:
+#                 status = await run_in_threadpool(get_device_status, serial)
+#                 full_update = {
+#                     "type": "full_status",
+#                     "data": status.model_dump(),  # sends the complete status
+#                 }
+#                 await ws_manager.broadcast(full_update)
+#             await asyncio.sleep(0.1)
+#     except WebSocketDisconnect:
+#         ws_manager.disconnect(websocket)
+#     except Exception as e:
+#         logger.error(f"Websocket error for device {serial}: {e}")
+#     finally:
+#         await websocket.close()
 
 
-# @app.on_event("shutdown")
-# async def shutdown_event():
-#     executor.shutdown(wait=False)
-#     get_cohrhops_manager().close()
-#     logger.info("Executor shutdown, cleaning up.")
+@app.websocket("/ws/device/{serial}")
+async def device_ws(websocket: WebSocket, serial: str):
+    if serial not in ws_managers:
+        ws_managers[serial] = wsManager()
+    ws_manager = ws_managers[serial]
+
+    await ws_manager.connect(websocket)
+
+    # Spawn the update loop as a background task.
+    update_task = asyncio.create_task(websocket_update_loop(ws_manager, serial))
+
+    try:
+        # Optionally, wait here until the websocket disconnects.
+        await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Websocket error for device {serial}: {e}")
+    finally:
+        update_task.cancel()  # Cancel the update loop if the websocket disconnects.
+        await websocket.close()
+
+
+async def websocket_update_loop(ws_manager: wsManager, serial: str):
+    counter = 0
+    try:
+        while True:
+            power = get_device_power(serial)
+            power_update = {
+                "type": "power_update",
+                "data": {
+                    "value": power.value,
+                    "setpoint": power.setpoint,
+                },
+            }
+            await ws_manager.broadcast(power_update)
+
+            counter += 1
+            if counter % 10 == 0:
+                status = await run_in_threadpool(get_device_status, serial)
+                full_update = {
+                    "type": "full_status",
+                    "data": status.model_dump(),  # sends the complete status
+                }
+                await ws_manager.broadcast(full_update)
+            await asyncio.sleep(0.1)
+    except asyncio.CancelledError:
+        # Task was cancelled when the websocket closed.
+        pass
 
 
 if __name__ == "__main__":
