@@ -19,8 +19,19 @@ export interface LaserStatus {
     alarms: string[] | undefined;
 }
 
+export interface LaserInfo {
+    serial: string;
+    wavelength: number;
+    head_type?: string;
+    head_hours?: string;
+    head_board?: string;
+}
+
+export type Wavelength = 0 | 639 | 561 | 488;
+
 export class Laser {
     serial: string;
+    wavelength: Wavelength | undefined;
     status = $state<LaserStatus>({
         remote_control: undefined,
         key_switch: undefined,
@@ -52,6 +63,7 @@ export class Laser {
 
     subscribe() {
         this.ws = new WebSocket(`ws://localhost:8000/ws/device/${ this.serial }`);
+        this.refreshInfo();
 
         this.ws.onopen = () => {
             console.log(`WebSocket connected for device ${ this.serial }`);
@@ -91,6 +103,20 @@ export class Laser {
                 .then((data) => {
                     this.status = data;
                     this.updateHistory();
+                });
+        } catch (err: any) {
+            console.error(err.message);
+        }
+    }
+    refreshInfo(): void {
+        try {
+            console.log("Laser: " + this.serial + " refreshing info");
+            fetch(`${ API_BASE }/device/${ this.serial }/info`)
+                .then((res) => res.json())
+                .then((data: LaserInfo) => {
+                    if ([0, 639, 561, 488].includes(data.wavelength)) {
+                        this.wavelength = data.wavelength as Wavelength;
+                    }
                 });
         } catch (err: any) {
             console.error(err.message);

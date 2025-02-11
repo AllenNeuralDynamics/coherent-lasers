@@ -2,7 +2,7 @@ import logging
 import random
 from functools import cached_property
 
-from .commands import Alarm, OperationMode
+from .commands import OperationMode
 from .base import GenesisMXInfo, LaserPower, LaserTemperature
 
 
@@ -20,7 +20,11 @@ class GenesisMXMock:
     def info(self) -> GenesisMXInfo:
         return GenesisMXInfo(
             serial=self.serial,
-            wavelength=561 if self.serial.startswith("green") else 488 if self.serial.startswith("blue") else 639,
+            wavelength=561
+            if self.serial.lower().startswith("green")
+            else 488
+            if self.serial.lower().startswith("blue")
+            else 639,
             head_type="MiniX",
             head_hours=str(random.randint(0, 1000)),
             head_dio_status=None,  # Unreliable command
@@ -34,7 +38,7 @@ class GenesisMXMock:
         :rtype: LaserPower
         """
         value = random.gauss(mu=self._power_setpoint, sigma=0.1) if self.is_enabled else random.gauss(mu=0, sigma=0.1)
-        return LaserPower(value=value, setpoint=self._power_setpoint)
+        return LaserPower(value=max(value, 0), setpoint=self._power_setpoint)
 
     @power.setter
     def power(self, power: float) -> None:
@@ -135,12 +139,16 @@ class GenesisMXMock:
         self._mode = mode
 
     @property
-    def alarms(self) -> list[Alarm] | None:
+    def alarms(self) -> list[str] | None:
         """Get the list of active alarms based on the fault code."""
         return []
 
     def __repr__(self) -> str:
         return f"GenesisMX(serial={self.serial}, wavelength={self.info.wavelength}, head_type={self.info.head_type})"
+
+    def close(self) -> None:
+        """Close the connection to the laser."""
+        pass
 
     # send commands helper functions
     # Not needed for the mock

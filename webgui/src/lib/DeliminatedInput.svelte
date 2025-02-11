@@ -1,6 +1,6 @@
 <script lang="ts">
   interface DeliminatedInputProps {
-    value: number;
+    value?: number;
     onChange?: (value: number) => void;
     min?: number;
     max?: number;
@@ -50,8 +50,12 @@
   <input
     type="text"
     {value}
-    onchange={handleValueChange}
     bind:this={textInput}
+    onchange={handleValueChange}
+    onclick={(e) => {
+      const target = e.target as HTMLInputElement;
+      target && target.select();
+    }}
   />
   <input
     type="range"
@@ -69,55 +73,56 @@
     --hover-color: var(--zinc-600);
     --transition: var(--transition-duration, 0.3s) ease-in-out;
 
-    --thumb-size: 0.75rem;
-    --slider-thickness: calc(var(--thumb-size) * 1.5);
-    --track-thickness: calc(var(--thumb-size) * 0.5);
-    /* --track-bg: var(--zinc-800); */
-
-    /* --border-color: var(--zinc-800); */
+    --base-size: var(--thumb-size, 0.75rem);
     --track-bg: var(--border-color, var(--zinc-800));
-    --border: 1px solid var(--track-bg);
 
-    display: flex;
-    flex-direction: column;
-    background-color: var(--zinc-900);
-    padding-bottom: calc((0.75rem - 0.375rem) * 0.5);
+    --border: var(--border-size, 1px) solid var(--track-bg);
+    --_track-thickness: var(--track-thickness, calc(var(--base-size) * 0.3));
+
+    border-radius: var(--border-radius);
+    border: var(--border);
+    border-bottom: none;
+    position: relative;
+    height: calc(var(--height, 100%) + (var(--_track-thickness) * 0.5));
+    padding-bottom: var(--base-size);
+    border-top-left-radius: var(--border-radius);
+    border-top-right-radius: var(--border-radius);
 
     input[type="text"] {
       width: 100%;
-      margin-inline: auto;
+      height: calc(var(--height, 100%) - var(--_track-thickness));
       text-align: center;
-      font-family: monospace;
-      font-size: var(--font-sm);
-      color: var(--zinc-400);
-      padding-block: 0.25rem;
-      background-color: var(--bg-color, var(--zinc-900));
-      border: var(--border);
-      border-bottom: none;
-      transition: all var(--transition);
+      font-family: inherit;
+      font-size: inherit;
+      color: inherit;
+      border: none;
       outline: none;
+      background-color: var(--bg-color, transparent);
+      transition: all var(--transition);
     }
 
     input[type="range"] {
+      position: absolute;
+      bottom: calc(var(--_track-thickness) * 0.5);
+      left: 0;
+      right: 0;
       /* style the track */
       -webkit-appearance: none;
       appearance: none;
       outline: none;
-      width: 100%;
-      height: var(--track-thickness);
+      height: var(--_track-thickness);
       background-color: var(--track-bg);
-      border-left: var(--border);
-      border-right: var(--border);
+      border-radius: 5%;
 
       transition: all var(--transition);
       /* style the thumb */
       &::-webkit-slider-thumb {
         -webkit-appearance: none;
         appearance: none;
-        width: var(--thumb-size);
-        height: var(--thumb-size);
+        width: var(--base-size);
+        height: var(--base-size);
         background-color: var(--thumb-color, var(--zinc-500));
-        opacity: 0.75;
+        opacity: var(--thumb-opacity, 1);
         border-radius: 50%;
         cursor: pointer;
         transition: all var(--transition);

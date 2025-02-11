@@ -54,8 +54,6 @@ class GenesisMXLaser(Protocol):
         """
         ...
 
-    def set_power(self, power: float): ...
-
     @property
     def current(self) -> float | None:
         """Current in mA."""

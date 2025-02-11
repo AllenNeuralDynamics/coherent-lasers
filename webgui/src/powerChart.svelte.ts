@@ -113,6 +113,8 @@ export const laserPowerChart = (node: SVGElement, { laser, getPowerRange }: Lase
 };
 
 
+// Alternatively, this action could be used to animate the chart. Not yet working reliably.
+
 export function laserPowerChartAnimate(node: SVGElement, { laser, getPowerRange }: LaserChartProps) {
 
     const container = node.parentElement ?? node;

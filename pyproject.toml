@@ -1,6 +1,6 @@
 [project]
 name = "coherent_lasers"
-version = "0.2.0"
+version =  "0.2.0"
 description = "A python package for controlling coherent lasers"
 license = { text = "MIT" }
 requires-python = ">=3.10, < 3.12"
@@ -10,7 +10,6 @@ authors = [
 classifiers = ["Programming Language :: Python :: 3.10"]
 readme = "README.md"
 keywords = ["laser", "coherent", "drivers", "hardware control"]
-
 
 [build-system]
 requires = ["setuptools>=42", "setuptools-scm"]
@@ -38,18 +37,18 @@ include-package-data = true
 py-modules = []
 
 [project.scripts]
-genesis-mx = "coherent_lasers.app.main:run"
-genesis-mx-cli = "coherent_lasers.app.cli:cli"
+genesis-mx = "coherent_lasers.genesis_mx.app.server:run"
+genesis-mx-cli = "coherent_lasers.genesis_mx.app.cli:cli"
 
 [tool.setuptools.package-data]
-"coherent_lasers.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]
-"coherent_lasers.app" = ["frontend/build/*"]
+"coherent_lasers.genesis_mx.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]
+"coherent_lasers.genesis_mx.app.frontend" = ["build/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["coherent_lasers*"]
+# exclude = ["tests*, docs*, webgui*, dist*, frontend*, build*"]
 namespaces = false
-
 
 [tool.ruff]
 line-length = 120

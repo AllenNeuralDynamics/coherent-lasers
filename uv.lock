@@ -156,7 +156,6 @@ wheels = [
 
 [[package]]
 name = "coherent-lasers"
-version = "0.2.0"
 source = { editable = "." }
 
 [package.optional-dependencies]

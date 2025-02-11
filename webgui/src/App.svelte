@@ -2,17 +2,26 @@
   import { untrack } from "svelte";
   import LaserLogo from "/laser-logo.svg";
   import * as d3 from "d3";
-  import { laserPowerChart } from "./chart.svelte";
-  import { Laser } from "./laser.svelte";
+  import { laserPowerChart } from "./powerChart.svelte";
+  import { Laser, type Wavelength } from "./laser.svelte";
+  import DeliminatedInput from "./lib/DeliminatedInput.svelte";
 
   const API_BASE: string = "http://localhost:8000/api";
   const MIN_POWER = 0;
 
   // State
   let lasers = $state<Laser[]>([]);
-  let maxPower = $state<number>(10);
-  let powerLimit = $state<number>(1000);
+  let collectiveMaxPower = $state<number>(10);
+  let powerLimit = $state<number>(100);
   let loading = $state<boolean>(false);
+  let useMock = $state<boolean>(true);
+
+  const WAVELENGTH_COLOR_MAP: Record<Wavelength, string> = {
+    0: "var(--zinc-500)",
+    639: "var(--red-600)",
+    561: "green",
+    488: "var(--sky-600)",
+  };
 
   async function fetchLasers(): Promise<Laser[]> {
     untrack(() => {
@@ -20,14 +29,28 @@
       lasers = [];
       loading = true;
     });
-    const res = await fetch(`${API_BASE}/devices`);
-    if (!res.ok) {
-      throw new Error("Failed to fetch devices.");
+
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timed out")), 10000)
+    );
+
+    try {
+      const res: Response = (await Promise.race([
+        fetch(`${API_BASE}/devices?mock=${useMock}`),
+        timeout,
+      ])) as Response;
+      if (!res.ok) {
+        throw new Error("Failed to fetch devices.");
+      }
+      const serials = await res.json();
+      console.log("serials: ", serials);
+      lasers = serials.map((serial: string) => new Laser(serial));
+    } catch (error) {
+      console.error(error);
+    } finally {
+      loading = false;
     }
-    const serials = await res.json();
-    console.log("serials: ", serials);
-    lasers = serials.map((serial: string) => new Laser(serial));
-    loading = false;
+
     return lasers;
   }
 
@@ -46,9 +69,9 @@
       d3.max(laser.history, (d) => d.power.setpoint) ?? 0,
     ]);
 
-    const collectiveMax = Math.max(...maxValues);
-    const closestMultiple = Math.ceil(collectiveMax / INCREMENT) * INCREMENT;
-    maxPower = Math.max(closestMultiple, MIN_POWER + MIN_RANGE);
+    const overallMax = Math.max(...maxValues);
+    const closestMultiple = Math.ceil(overallMax / INCREMENT) * INCREMENT;
+    collectiveMaxPower = Math.max(closestMultiple, MIN_POWER + MIN_RANGE);
   });
 </script>
 
@@ -82,9 +105,13 @@
 {/snippet}
 
 {#snippet laserCard(laser: Laser)}
-  <div class="laser-card">
+  <div
+    class="laser-card"
+    style:--wave-color={WAVELENGTH_COLOR_MAP[laser.wavelength ?? 0]}
+    data-wavelength={laser.wavelength}
+  >
     <div class="header">
-      <h2 class="text-md zinc-400">{laser.serial}</h2>
+      <h2 class="text-md">{laser.serial.toUpperCase()}</h2>
       <div class="quick-controls">
         {#if laser.status}
           <button
@@ -162,7 +189,7 @@
           <svg
             use:laserPowerChart={{
               laser: laser,
-              getPowerRange: () => [MIN_POWER, maxPower],
+              getPowerRange: () => [MIN_POWER, collectiveMaxPower],
             }}
           ></svg>
         </div>
@@ -174,20 +201,34 @@
       <div class="properties">
         <div class="power-value property">
           <h3>Power</h3>
-          <p>{laser.power.value?.toFixed(2) ?? "--"} <small>mW</small></p>
+          <p>
+            <span>{laser.power.value?.toFixed(2) ?? "--"} </span><small
+              >mW</small
+            >
+          </p>
         </div>
         <div class="power-setpoint property">
           <h3>Setpoint</h3>
-          <p>{laser.power.setpoint?.toFixed(2) ?? "--"} <small>mW</small></p>
+          <p>
+            <span>{laser.power.setpoint?.toFixed(2) ?? "--"} </span><small
+              >mW</small
+            >
+          </p>
         </div>
         <div class="current property">
           <h3>Current</h3>
-          <p>{laser.status?.current?.toFixed(2) ?? "--"} <small>A</small></p>
+          <p>
+            <span>{laser.status?.current?.toFixed(2) ?? "--"} </span><small
+              >A</small
+            >
+          </p>
         </div>
         <div class="temperature property">
           <h3>Temp</h3>
           <p>
-            {laser.status?.temperature?.toFixed(2) ?? "--"} <small>℃</small>
+            <span>{laser.status?.temperature?.toFixed(2) ?? "--"} </span><small
+              >℃</small
+            >
           </p>
         </div>
       </div>
@@ -208,7 +249,16 @@
         <button class="disable-button" onclick={() => laser.disable()}>
           <span>Disable</span>
         </button>
-        <input
+        <div class="power-input">
+          <DeliminatedInput
+            min={MIN_POWER}
+            max={powerLimit}
+            step={1}
+            value={laser.power.setpoint}
+            onChange={(value) => laser.setPower(value)}
+          />
+        </div>
+        <!-- <input
           type="number"
           data-serial={laser.serial}
           min="0"
@@ -229,7 +279,7 @@
             const target = e.target as HTMLInputElement;
             target && target.select();
           }}
-        />
+        /> -->
       </div>
     </div>
   </div>
@@ -242,8 +292,8 @@
       <h1>Genesis MX</h1>
     </div>
     <div class="app-controls">
-      <div class="input">
-        <label for="power-limit">Power Limit (mW)</label>
+      <div class="input-group">
+        <label for="power-limit">Limit (mW)</label>
         <input
           name="power-limit"
           type="number"
@@ -270,41 +320,69 @@
           }}
         />
       </div>
-      <button onclick={() => fetchLasers()}>Refresh</button>
+      <button class="app-input refresh-btn" onclick={() => fetchLasers()}
+        >Refresh
+      </button>
     </div>
   </section>
-  <section class="laser-cards">
-    {#await fetchLasers()}
-      <div>
-        {@render spinner()}
-        <p>Loading devices...</p>
-      </div>
-    {:then _}
-      {#if loading}
-        <div>
-          {@render spinner()}
-          <p>Loading devices...</p>
+  <section class="main-panel">
+    {#if loading}
+      {@render spinner()}
+      <p>Loading devices...</p>
+    {:else if lasers.length === 0}
+      <p>No devices found. Try Refreshing to discover devices.</p>
+      <form onsubmit={(e) => e.preventDefault()}>
+        <div class="input-group">
+          <label for="use-mock-devices">Use Mock Devices</label>
+          <input type="checkbox" id="use-mock-devices" bind:checked={useMock} />
         </div>
-      {:else if lasers.length === 0}
-        <p>No devices found.</p>
-      {:else}
+        <button
+          class="app-input refresh-btn"
+          type="submit"
+          onclick={() => fetchLasers()}>Find Devices</button
+        >
+      </form>
+    {:else}
+      <div class="laser-cards">
         {#each lasers as laser}
           {@render laserCard(laser)}
         {/each}
-      {/if}
-    {:catch error}
-      <div class="error">Error: {error.message}</div>
-    {/await}
+      </div>
+    {/if}
   </section>
 </main>
 
 <style>
   main {
     max-width: 88rem;
+    height: 100%;
     margin-inline: auto;
     padding: 1rem;
     input[type="number"]::-webkit-inner-spin-button {
       appearance: none;
+    }
+    .app-input {
+      padding-inline: 1rem;
+      height: 2rem;
+      min-width: 6rem;
+      place-content: center;
+      text-align: center;
+      font-size: var(--font-md);
+      line-height: 1;
+      border: 0.5px solid var(--zinc-500);
+      border-radius: 0.25rem;
+    }
+    .refresh-btn {
+      border-color: var(--yellow-500);
+      color: var(--yellow-500);
+      font-weight: 500;
+      transition:
+        color 0.3s,
+        background-color 0.3s;
+      &:hover {
+        background-color: var(--yellow-500);
+        color: var(--zinc-950);
+      }
     }
     > .header {
       display: flex;
@@ -313,16 +391,24 @@
       .app-controls {
         display: flex;
         align-items: center;
-        gap: 1rem;
+        gap: 1.5rem;
+      }
+      div.input-group {
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
       }
       button,
       input {
         padding-inline: 1rem;
         height: 2rem;
+        width: 6rem;
+        place-content: center;
         text-align: center;
         font-size: var(--font-md);
-        line-height: 100%;
-        font-weight: 300;
+        line-height: 1;
+        border: 0.5px solid var(--zinc-500);
+        border-radius: 0.25rem;
       }
       label {
         font-size: var(--font-sm);
@@ -330,23 +416,18 @@
         margin-inline-end: 0.5rem;
       }
       button {
-        /* padding: 0.65rem 1rem; */
-        border-radius: 0.25rem;
-        border: 1px solid var(--zinc-700);
-        background-color: var(--zinc-800);
+        border-color: var(--yellow-500);
+        color: var(--yellow-500);
+        font-weight: 500;
         transition:
           color 0.3s,
           background-color 0.3s;
         &:hover {
           background-color: var(--yellow-500);
-          color: var(--zinc-900);
+          color: var(--zinc-950);
         }
       }
       input {
-        width: 5rem;
-        padding: 0.5rem;
-        border-radius: 0.25rem;
-        border: 1px solid var(--zinc-700);
         background-color: var(--zinc-800);
         transition: border-color 0.3s;
         &:hover,
@@ -364,29 +445,72 @@
       }
     }
   }
+  .main-panel {
+    margin-block: 1rem;
+    height: 100%;
+    > form {
+      display: flex;
+      flex-direction: column;
+      width: clamp(16rem, 30vw, 23rem);
+      padding-block: 1.5rem;
+      gap: 1rem;
+      color: var(--zinc-400);
+      .input-group {
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+  }
   .laser-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
     grid-template-rows: max-content;
     gap: 1rem;
-    margin-block: 1rem;
   }
   .laser-card {
     --padding: 1rem;
-    --card-border: 1px solid var(--zinc-700);
-    border: 1px solid var(--zinc-700);
+    --card-bg: color-mix(
+      in srgb,
+      var(--wave-color, transparent) 3%,
+      transparent
+    );
+    --card-bg-higher: color-mix(
+      in srgb,
+      var(--wave-color, transparent) 5%,
+      transparent
+    );
+    --card-bg-highest: color-mix(
+      in srgb,
+      var(--wave-color, transparent) 10%,
+      transparent
+    );
+    --card-border-color: color-mix(
+      in srgb,
+      var(--wave-color, transparent) 30%,
+      transparent
+    );
+    --card-border: 1px solid var(--card-border-color);
+    border: var(--card-border);
     border-radius: 0.25rem;
     overflow: hidden;
     display: grid;
     grid-template-rows: repeat(4, max-content);
+    background-color: var(--card-bg);
     .header {
-      background-color: var(--zinc-900);
-      /* border-block-end: var(--card-border); */
+      background-color: var(--card-bg-highest);
+      border-block-end: var(--card-border);
       padding-inline: var(--padding) calc(var(--padding) - 0.25rem);
       height: 2.5rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      h2 {
+        font-size: var(--font-sm);
+        font-weight: 500;
+        color: var(--zinc-50);
+      }
 
       .quick-controls {
         display: flex;
@@ -414,7 +538,6 @@
       justify-content: space-between;
       align-items: center;
       user-select: none;
-      background-color: var(--zinc-950);
       padding-inline: var(--padding);
       padding-block: var(--padding);
       border-block-end: var(--card-border);
@@ -456,7 +579,7 @@
     .power {
       display: grid;
       grid-template-columns: 1fr auto;
-      margin-inline-end: var(--padding);
+      margin-inline: var(--padding);
       .power-setpoint {
         color: var(--yellow-400);
       }
@@ -467,9 +590,9 @@
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        padding-inline: 0.25rem;
         padding-top: 20px;
         padding-bottom: 25px;
+        padding-inline-start: 0.25rem;
         height: clamp(12rem, 16vw, 16rem);
         height: max-content;
         gap: 0.25rem;
@@ -486,12 +609,18 @@
             font-size: var(--font-xs);
             font-weight: 500;
             color: var(--zinc-400);
+            text-align: right;
           }
           p {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 0.5rem;
+            gap: 0.25rem;
+            span {
+              font-size: var(--font-sm);
+              min-width: 6ch;
+              text-align: right;
+            }
           }
         }
       }
@@ -519,14 +648,24 @@
       }
     }
     .footer {
-      background-color: var(--zinc-900);
+      background-color: var(--card-bg);
       .controls {
         display: grid;
         grid-template-columns: 2fr 2fr 3fr;
         gap: 1rem;
         padding: var(--padding);
-        button,
-        input {
+        .power-input {
+          --border-color: var(--yellow-400);
+          --thumb-color: var(--yellow-400);
+          --thumb-hover-color: var(--yellow-600);
+          --border-hover-color: var(--yellow-600);
+          --border-radius: 0.25rem;
+          --track-thickness: 0.25rem;
+          --border-size: 1.5px;
+          --height: 2rem;
+        }
+        /* input, */
+        button {
           color: var(--zinc-50);
           font-size: var(--font-md);
           font-weight: 400;
@@ -534,7 +673,7 @@
           border-radius: 0.25rem;
           border: 1px solid var(--color);
         }
-        input {
+        /* input {
           --color: var(--yellow-400);
           background-color: var(--zinc-900);
           text-align: center;
@@ -548,7 +687,7 @@
             cursor: not-allowed;
             opacity: 0.5;
           }
-        }
+        } */
         button {
           cursor: pointer;
           user-select: none;

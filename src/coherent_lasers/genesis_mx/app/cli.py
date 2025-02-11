@@ -13,11 +13,10 @@ Commands:
 """
 
 import click
-import time
 import logging
 from coherent_lasers.genesis_mx.driver import GenesisMX
-from coherent_lasers.genesis_mx.commands import OperationMode, ReadCmds
-from coherent_lasers.hops.lib import HOPSException, get_hops_manager
+from ..commands import OperationMode, ReadCmd
+from coherent_lasers.genesis_mx.hops import HOPSException, get_cohrhops_manager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -26,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 @click.command()
 def cli() -> None:
-    manager = get_hops_manager()
-    serials = manager._handles.values()
+    manager = get_cohrhops_manager()
+    serials = manager.serials
     devices = {serial: GenesisMX(serial) for serial in serials}
     click.echo(f"Found {len(serials)} devices:")
     if not devices:
@@ -87,7 +86,9 @@ def validate_lasers(devices: dict[str, GenesisMX]) -> dict[str, GenesisMX]:
     head_types = {"MiniX", "Mini00"}
     for serial, device in devices.items():
         try:
-            response = device.send_read_command(ReadCmds.HEAD_TYPE)
+            response = device.send_read_command(ReadCmd.HEAD_TYPE)
+            if response is None:
+                raise HOPSException("Invalid response")
         except HOPSException as e:
             click.echo(f"Error getting head type for device {serial}: {str(e)}")
             continue
@@ -158,12 +159,12 @@ def info(laser: GenesisMX, args=None) -> None:
     if args:
         click.echo(f"    The info command does not take any arguments, ignoring: {args}")
     try:
-        info = laser.head
+        info = laser.info
         click.echo(f"    Serial: {info.serial}", nl=False)
-        click.echo(f"    Type: {info.type}", nl=False)
-        click.echo(f"    Hours: {info.hours}", nl=False)
-        click.echo(f"    Board Revision: {info.board_revision}", nl=False)
-        click.echo(f"    DIO Status: {info.dio_status}")
+        click.echo(f"    Type: {info.head_type}", nl=False)
+        click.echo(f"    Hours: {info.head_hours}", nl=False)
+        click.echo(f"    Board Revision: {info.head_board_revision}", nl=False)
+        click.echo(f"    DIO Status: {info.head_dio_status}")
     except Exception as e:
         click.echo(f"Error getting information: {str(e)}")
 
@@ -174,7 +175,7 @@ def mode(laser: GenesisMX, args=None) -> None:
     if value is not None and value.upper() in OperationMode.__members__:
         laser.mode = OperationMode[value.upper()]
         click.echo("  Updating laser mode...")
-    click.echo(f"    Mode: {laser.mode.name}, Valid modes: {' | '.join(OperationMode.__members__)}")
+    click.echo(f"    Mode: {OperationMode(laser.mode).name}, Valid modes: {' | '.join(OperationMode.__members__)}")
 
 
 def power(laser: GenesisMX, args=[]) -> None:
@@ -191,14 +192,14 @@ def power(laser: GenesisMX, args=[]) -> None:
                 click.echo(f"Invalid power value: {arg}")
                 break
     if value is not None:
-        laser.power_mw = value
+        laser.power = value
         click.echo("  Updating laser power...")
         if wait:
-            time.sleep(1)
-    click.echo(f"    Power:             {laser.power_mw:.2f} mW")
-    click.echo(f"    Power Setpoint:    {laser.power_setpoint_mw:.2f} mW")
-    click.echo(f"    LDD Current:       {laser.ldd_current:.2f} A")
-    click.echo(f"    LDD Current Limit: {laser.ldd_current_limit:.2f} A")
+            laser.await_power()
+    power = laser.power
+    click.echo(f"    Power:             {power.value:.2f} mW")
+    click.echo(f"    Power Setpoint:    {power.setpoint:.2f} mW")
+    click.echo(f"    LDD Current:       {laser.current:.2f} A")
 
 
 def status(laser: GenesisMX, args=None) -> None:
@@ -209,16 +210,14 @@ def status(laser: GenesisMX, args=None) -> None:
         click.echo(divider)
         info(laser)
         click.echo(divider)
-    enable_loop = laser.enable_loop
     click.echo("   Laser Status:")
-    click.echo(f"    Software switch: {enable_loop.software}")
-    click.echo(f"    Key switch: {enable_loop.key}")
-    click.echo(f"    Interlock: {enable_loop.interlock}")
-    click.echo(f"    LDD status: {laser.is_ldd_enabled}")
-    click.echo(f"    Temperature: {laser.temperature_c:.2f} C")
-    click.echo(f"    Alarms: {', '.join(alarm.name for alarm in laser.alarms)}")
-    # click.echo(f"  Analog Input: {laser.analog_input_enable}")
-    # click.echo(f"  Remote Control: {laser.remote_control_enable}")
+    click.echo(f"    Software switch: {laser.software_switch}")
+    click.echo(f"    Key switch: {laser.key_switch}")
+    click.echo(f"    Interlock: {laser.interlock}")
+    click.echo(f"    Temperature: {laser.get_temperatures()} C")
+    click.echo(f"    Alarms: {', '.join(alarm for alarm in laser.alarms) if laser.alarms else 'None'}")
+    click.echo(f"  Analog Input: {laser.analog_input if laser.analog_input else 'None'}")
+    click.echo(f"  Remote Control: {laser.remote_control if laser.remote_control else 'N/A'}")
     if full:
         click.echo(divider)
         mode(laser)
@@ -233,8 +232,8 @@ def send_command(laser: GenesisMX, args=None) -> None:
         click.echo("No command provided.")
         return
     command = args[0]
-    response = laser.hops.send_command(command)
-    click.echo(f"  Response: {response}")
+    response = laser.send_command(command)
+    click.echo(f"  Response: {response if response else 'No response'}")
 
 
 def display_help(laser: GenesisMX, args=None) -> None:
