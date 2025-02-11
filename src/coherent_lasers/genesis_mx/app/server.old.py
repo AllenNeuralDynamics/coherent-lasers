@@ -36,6 +36,8 @@ class wsManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
             logger.info(f"Disconnected. Total connections: {len(self.active_connections)}")
+        # Optionally, you might want to force-close the websocket:
+        # await websocket.close()
 
     async def broadcast(self, message: dict):
         # Iterate over a copy to safely remove closed connections.
@@ -82,8 +84,8 @@ class StatusResponse(BaseModel):
 # -----------------------------------------------------------------------------
 # Data structure for a device record.
 #
-# We add two publisher tasks: one for fast power updates and one for slow full-
-# status updates.
+# We add an optional 'publisher_task' attribute so that each device has
+# only one background update loop that sends updates to all connected clients.
 # -----------------------------------------------------------------------------
 @dataclass
 class DeviceRecord:
@@ -91,8 +93,7 @@ class DeviceRecord:
     socket: wsManager
     cached_power: PowerStatus | None = field(default=None)
     cache_task: asyncio.Task | None = field(default=None)
-    fast_publisher_task: asyncio.Task | None = field(default=None)
-    slow_publisher_task: asyncio.Task | None = field(default=None)
+    publisher_task: asyncio.Task | None = field(default=None)
 
 
 # Global dictionary holding the discovered devices.
@@ -111,7 +112,6 @@ def run_discovery(mock: bool = False):
     try:
         for serial in get_cohrhops_manager().discover():
             record = DeviceRecord(GenesisMX(serial), wsManager())
-            # Schedule the fast power cache update task.
             record.cache_task = asyncio.create_task(update_power_cache(record))
             DEVICES[serial] = record
         logger.info(f"Discovered devices: {list(DEVICES.keys())}")
@@ -120,42 +120,32 @@ def run_discovery(mock: bool = False):
         if mock:
             logger.info("Using mock devices for testing.")
             DEVICES.update(generate_mock_devices())
-            # Start cache tasks for the mock devices.
+            # And be sure to start the cache tasks for the mock devices:
             for record in DEVICES.values():
                 record.cache_task = asyncio.create_task(update_power_cache(record))
 
 
 # -----------------------------------------------------------------------------
-# Lifespan: startup runs discovery; shutdown cancels any running tasks and
-# closes device resources.
+# Lifespan: startup runs discovery; shutdown cancels any running publisher tasks
+# and closes device resources.
 # -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: run discovery on the main thread (so that create_task is valid)
+    # Startup: run blocking discovery in a threadpool.
     run_discovery()
     yield
-    # Shutdown: cancel publisher and cache tasks, and close device resources.
+    # Shutdown: cancel any background publisher tasks and close devices.
     for record in DEVICES.values():
-        if record.fast_publisher_task is not None:
-            record.fast_publisher_task.cancel()
+        if record.publisher_task is not None:
+            record.publisher_task.cancel()
             try:
-                await record.fast_publisher_task
+                await record.publisher_task
             except asyncio.CancelledError:
-                logger.info("Fast publisher task cancelled.")
-        if record.slow_publisher_task is not None:
-            record.slow_publisher_task.cancel()
-            try:
-                await record.slow_publisher_task
-            except asyncio.CancelledError:
-                logger.info("Slow publisher task cancelled.")
-        if record.cache_task is not None:
-            record.cache_task.cancel()
-            try:
-                await record.cache_task
-            except asyncio.CancelledError:
-                logger.info("Cache task cancelled.")
+                logger.info("Publisher task cancelled.")
+        # If GenesisMX has a close method, ensure it is run in the threadpool.
         if hasattr(record.instance, "close"):
             await run_in_threadpool(record.instance.close)
+    # Finally, close the HOPS manager.
     await run_in_threadpool(get_cohrhops_manager().close)
 
 
@@ -228,7 +218,7 @@ async def discover_devices(mock: bool = False):
 
 @app.get("/api/devices", response_model=list[str])
 async def list_devices(mock: bool = False):
-    """List all available device serial numbers."""
+    """Discover and list all available device serial numbers."""
     if not DEVICES:
         run_discovery(mock)
     serials = list(DEVICES.keys())
@@ -272,6 +262,7 @@ async def enable_device(serial: str):
 async def disable_device(serial: str):
     """Disable the device."""
     device = get_device(serial)
+    # If disable is a blocking call, consider running it in a threadpool.
     await run_in_threadpool(device.disable)
     return await get_status(serial)
 
@@ -280,6 +271,7 @@ async def disable_device(serial: str):
 async def set_power(serial: str, request: SetPowerRequest):
     """Set the power of the device."""
     device = get_device(serial)
+    # Set power (if this is blocking, run it in a threadpool)
     device.power = request.power
     return await get_status(serial)
 
@@ -287,8 +279,8 @@ async def set_power(serial: str, request: SetPowerRequest):
 # -----------------------------------------------------------------------------
 # WebSocket endpoint
 #
-# When a client connects, we start two separate publisher tasks:
-# one for fast (power) updates and one for slow (full status) updates.
+# In this version, each device record holds a single publisher task that
+# runs as long as there is at least one active connection.
 # -----------------------------------------------------------------------------
 @app.websocket("/ws/device/{serial}")
 async def device_ws(websocket: WebSocket, serial: str):
@@ -303,15 +295,15 @@ async def device_ws(websocket: WebSocket, serial: str):
 
     await ws_manager.connect(websocket)
 
-    # Start the fast publisher if not running.
-    if record.fast_publisher_task is None or record.fast_publisher_task.done():
-        record.fast_publisher_task = asyncio.create_task(fast_power_publisher(ws_manager, serial))
-    # Start the slow publisher if not running.
-    if record.slow_publisher_task is None or record.slow_publisher_task.done():
-        record.slow_publisher_task = asyncio.create_task(slow_full_status_publisher(ws_manager, serial))
+    # If there isn’t already a running publisher for this device, create one.
+    if record.publisher_task is None or record.publisher_task.done():
+        record.publisher_task = asyncio.create_task(device_status_publisher(ws_manager, serial))
 
     try:
+        # Keep the connection open.
+        # (If you expect messages from the client, process them here.)
         while True:
+            # For example, simply wait for pings or messages.
             await websocket.receive_text()
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for device {serial}.")
@@ -319,17 +311,21 @@ async def device_ws(websocket: WebSocket, serial: str):
     except Exception as e:
         logger.error(f"WebSocket error for device {serial}: {e}")
         ws_manager.disconnect(websocket)
+    # Note: we do not cancel the shared publisher here because other clients
+    # might still be connected. The publisher itself will exit if there are no
+    # active connections.
 
 
 # -----------------------------------------------------------------------------
 # Background task to update the power cache.
 #
-# This task polls the device at a set interval (e.g. every 0.25 seconds) and
-# updates the cached power value in the DeviceRecord.
+# This task polls the device at a set interval (e.g. every 200ms) and updates
+# the cached power value in the DeviceRecord.
 # -----------------------------------------------------------------------------
 async def update_power_cache(record: DeviceRecord, interval: float = 0.25):
     while True:
         try:
+            # Run the slow power retrieval in a threadpool.
             power = await run_in_threadpool(get_device_power, record.instance.serial)
             record.cached_power = power
         except Exception as e:
@@ -338,37 +334,38 @@ async def update_power_cache(record: DeviceRecord, interval: float = 0.25):
 
 
 # -----------------------------------------------------------------------------
-# Background task for fast power updates.
+# Background publisher task for a device.
 #
-# This task sends power updates using the cached power at a high frequency.
+# This task will check the active connections in the wsManager and send a full
+# update every 10 iterations and a quick power update otherwise.
+# reads the cached power value for fast, consistent updates.
 # -----------------------------------------------------------------------------
-async def fast_power_publisher(ws_manager: wsManager, serial: str):
-    while True:
-        if not ws_manager.active_connections:
-            logger.info(f"No active connections for device {serial} in fast publisher, stopping.")
-            break
-        power = DEVICES[serial].cached_power
-        if not power:
-            power = await run_in_threadpool(get_device_power, serial)
-        update = {"type": "power_update", "data": power.model_dump()}
-        await ws_manager.broadcast(update)
-        await asyncio.sleep(0.05)
+async def device_status_publisher(ws_manager: wsManager, serial: str):
+    counter = 0
+    try:
+        while True:
+            if not ws_manager.active_connections:
+                logger.info(f"No active connections for device {serial}, stopping publisher.")
+                break
 
-
-# -----------------------------------------------------------------------------
-# Background task for slow full status updates.
-#
-# This task sends full device status updates at a lower frequency.
-# -----------------------------------------------------------------------------
-async def slow_full_status_publisher(ws_manager: wsManager, serial: str):
-    while True:
-        if not ws_manager.active_connections:
-            logger.info(f"No active connections for device {serial} in slow publisher, stopping.")
-            break
-        status = await run_in_threadpool(get_device_status, serial)
-        update = {"type": "full_status", "data": status.model_dump()}
-        await ws_manager.broadcast(update)
-        await asyncio.sleep(5.0)
+            if counter % 50 == 0:
+                status = await run_in_threadpool(get_device_status, serial)
+                # Optionally update the cache here too
+                full_update = {"type": "full_status", "data": status.model_dump()}
+                await ws_manager.broadcast(full_update)
+            else:
+                # Use the cached power value for quick updates.
+                power = DEVICES[serial].cached_power
+                if not power:
+                    power = await run_in_threadpool(get_device_power, serial)
+                power_update = {"type": "power_update", "data": power.model_dump()}
+                await ws_manager.broadcast(power_update)
+            counter += 1
+            await asyncio.sleep(0.03)
+    except asyncio.CancelledError:
+        logger.info(f"Publisher for device {serial} cancelled.")
+    except Exception as e:
+        logger.error(f"Error in publisher for device {serial}: {e}")
 
 
 # -----------------------------------------------------------------------------

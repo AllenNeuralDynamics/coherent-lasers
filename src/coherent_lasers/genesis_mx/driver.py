@@ -273,7 +273,9 @@ class GenesisMX(CohrHOPSDevice):
         """
         try:
             response = self.send_command(command=cmd.read())
-            return response == "1"
+            if response is not None:
+                response = int(response.strip())
+            return bool(response)
         except HOPSCommandException as e:
             self.log.error(e)
             return None

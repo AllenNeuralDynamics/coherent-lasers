@@ -174,7 +174,11 @@
         <h3 class="label">Software</h3>
         <div class="indicator"></div>
       </div>
-      <div style:--indicator={getIndicatorColor(laser.status?.key_switch)}>
+      <div
+        style:--indicator={getIndicatorColor(
+          !laser.status?.software_switch ? undefined : laser.status?.key_switch
+        )}
+      >
         <h3 class="label">Key</h3>
         <div class="indicator"></div>
       </div>
@@ -493,11 +497,11 @@
     );
     --card-border: 1px solid var(--card-border-color);
     border: var(--card-border);
+    /* background-color: var(--card-bg); */
     border-radius: 0.25rem;
     overflow: hidden;
     display: grid;
     grid-template-rows: repeat(4, max-content);
-    background-color: var(--card-bg);
     .header {
       background-color: var(--card-bg-highest);
       border-block-end: var(--card-border);
@@ -534,9 +538,9 @@
       }
     }
     .enable-loop {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
       user-select: none;
       padding-inline: var(--padding);
       padding-block: var(--padding);
@@ -546,16 +550,17 @@
         align-items: center;
         flex-direction: row-reverse;
         gap: 0.5rem;
-        padding: 0.125rem 0.5rem;
+        padding: 0.05rem 0.5rem;
         width: 7rem;
+        width: 100%;
         --border-color: color-mix(
           in srgb,
-          var(--indicator, var(--zinc-500)) 50%,
+          var(--indicator, var(--zinc-500)) 20%,
           transparent
         );
         background-color: color-mix(
           in srgb,
-          var(--indicator, var(--zinc-500)) 10%,
+          var(--indicator, var(--zinc-500)) 5%,
           transparent
         );
         border: 1px solid var(--border-color);
@@ -569,7 +574,7 @@
           flex: 1;
         }
         .indicator {
-          width: 1rem;
+          width: 0.75rem;
           aspect-ratio: 1;
           border-radius: 50%;
           background-color: var(--indicator, var(--zinc-500));
@@ -579,7 +584,8 @@
     .power {
       display: grid;
       grid-template-columns: 1fr auto;
-      margin-inline: var(--padding);
+      margin-inline-end: var(--padding);
+      margin-inline-start: calc(var(--padding) * 0.25);
       .power-setpoint {
         color: var(--yellow-400);
       }
@@ -601,9 +607,9 @@
           flex-direction: column;
           font-size: var(--font-sm);
           padding-block: 0.25rem;
-          border-block-start: 1px solid var(--zinc-700);
+          border-block-start: var(--card-border);
           &:last-child {
-            border-block-end: 1px solid var(--zinc-700);
+            border-block-end: var(--card-border);
           }
           h3 {
             font-size: var(--font-xs);
@@ -627,14 +633,13 @@
       .chart-placeholder {
         display: grid;
         place-content: center;
-        color: var(--zinc-500);
+        color: var(--zinc-600);
         background-color: color-mix(
           in srgb,
           var(--zinc-900) 50%,
           var(--zinc-800)
         );
         border-radius: 0.25rem;
-        filter: blur(1px);
         margin: calc(var(--padding) + 0.25rem);
       }
       .chart-container {
