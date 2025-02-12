@@ -1,5 +1,6 @@
+import { API_BASE } from "./lib/constants";
+import { subscribe } from "./lib/messaging/socket";
 
-export const API_BASE: string = "http://localhost:8000/api";
 export const MAX_HISTORY_LENGTH = 100;
 
 export interface LaserPower {
@@ -27,6 +28,12 @@ export interface LaserInfo {
     head_board?: string;
 }
 
+export interface LaserPayloadMapping {
+    power_update: LaserPower;
+    full_status: LaserStatus;
+}
+
+
 export type Wavelength = 0 | 639 | 561 | 488;
 
 export class Laser {
@@ -52,47 +59,25 @@ export class Laser {
         this.history.map((d) => d.power.setpoint ?? 0)
     );
     enabling = $state(false);
-    private ws: WebSocket | null = null;
-    connected = $derived(this.ws !== null);
 
     constructor (serial: string) {
         this.serial = serial;
+
+        subscribe(this.serial, {
+            subtopics: {
+                power_update: (payload: LaserPower) => {
+                    this.status.power = payload;
+                    this.updateHistory();
+                },
+                full_status: (payload: LaserStatus) => {
+                    this.status = payload;
+                    this.updateHistory();
+                },
+            },
+        });
+
         this.refreshStatus();
-        this.subscribe();
-    }
-
-    subscribe() {
-        this.ws = new WebSocket(`ws://localhost:8000/ws/device/${ this.serial }`);
         this.refreshInfo();
-
-        this.ws.onopen = () => {
-            console.log(`WebSocket connected for device ${ this.serial }`);
-        };
-
-        this.ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.type === "power_update") {
-                this.status.power = message.data;
-            } else if (message.type === "full_status") {
-                this.status = message.data;
-            }
-            this.updateHistory();
-        };
-
-        this.ws.onerror = (error) => {
-            console.error("WebSocket error:", error);
-        };
-
-        this.ws.onclose = () => {
-            console.log(`WebSocket closed for device ${ this.serial }`);
-        };
-    }
-
-    unsubscribe() {
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
     }
 
     refreshStatus(): void {

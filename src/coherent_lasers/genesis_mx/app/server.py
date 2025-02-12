@@ -1,50 +1,23 @@
-#!/usr/bin/env python3
-import asyncio
 import logging
-from dataclasses import dataclass, field
 from pathlib import Path
 
+import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import asynccontextmanager, run_in_threadpool
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import uvicorn
 
 # Import your GenesisMX class and HOPS manager factory.
 from coherent_lasers.genesis_mx import GenesisMX
+from coherent_lasers.genesis_mx.app.messaging import MessageEnvelope, PeriodicTask, PubSubHub, WebSocketHub
 from coherent_lasers.genesis_mx.hops import get_cohrhops_manager
 from coherent_lasers.genesis_mx.mock import GenesisMXMock
 
 logger = logging.getLogger("laser_api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-# -----------------------------------------------------------------------------
-# WebSocket manager – maintains a list of active connections.
-# -----------------------------------------------------------------------------
-class wsManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"Connected. Total connections: {len(self.active_connections)}")
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"Disconnected. Total connections: {len(self.active_connections)}")
-
-    async def broadcast(self, message: dict):
-        # Iterate over a copy to safely remove closed connections.
-        for connection in list(self.active_connections):
-            try:
-                await connection.send_json(message)
-            except Exception as e:
-                logger.error(f"Error sending message: {e}")
-                self.disconnect(connection)
+pub_sub_hub = WebSocketHub()
 
 
 # -----------------------------------------------------------------------------
@@ -72,91 +45,150 @@ class StatusResponse(BaseModel):
     key_switch: bool | None
     interlock: bool | None
     software_switch: bool | None
-    power: PowerStatus
+    power: PowerStatus | None
     temperature: float | None
     current: float | None
     mode: int | None
     alarms: list[str] | None
 
 
-# -----------------------------------------------------------------------------
-# Data structure for a device record.
-#
-# We add two publisher tasks: one for fast power updates and one for slow full-
-# status updates.
-# -----------------------------------------------------------------------------
-@dataclass
-class DeviceRecord:
-    instance: GenesisMX | GenesisMXMock
-    socket: wsManager
-    cached_power: PowerStatus | None = field(default=None)
-    cache_task: asyncio.Task | None = field(default=None)
-    fast_publisher_task: asyncio.Task | None = field(default=None)
-    slow_publisher_task: asyncio.Task | None = field(default=None)
+# ----------------------------------------------------------------------------------------------------------------------
+# State management classes: DeviceState and ApplicationState.
+# ----------------------------------------------------------------------------------------------------------------------
+class DeviceState:
+    FAST_POLL_INTERVAL = 0.15
+    SLOW_POLL_INTERVAL = 5.0
+    FAST_PUBLISH_INTERVAL = 0.0333
+    SLOW_PUBLISH_INTERVAL = 5.0
+
+    def __init__(self, instance: GenesisMX | GenesisMXMock, publisher: PubSubHub):
+        self.instance = instance
+        self.publisher = publisher
+        self.power: PowerStatus | None = None
+        self.status: StatusResponse | None = None
+
+        self.periodic_tasks: list[PeriodicTask] = []
+        self.periodic_tasks.append(PeriodicTask(self.update_power_status, self.FAST_POLL_INTERVAL))
+        self.periodic_tasks.append(PeriodicTask(self.update_full_status, self.SLOW_POLL_INTERVAL))
+        self.periodic_tasks.append(PeriodicTask(self.publish_power_updates, self.FAST_PUBLISH_INTERVAL))
+        self.periodic_tasks.append(PeriodicTask(self.publish_full_status_updates, self.SLOW_PUBLISH_INTERVAL))
+
+    @property
+    def serial(self) -> str:
+        return self.instance.serial
+
+    async def enable(self):
+        await run_in_threadpool(self.instance.enable)
+        await self.update_power_status()
+
+    async def disable(self):
+        await run_in_threadpool(self.instance.disable)
+        await self.update_power_status()
+
+    def run(self):
+        for task in self.periodic_tasks:
+            task.start()
+
+    def shutdown(self):
+        for task in self.periodic_tasks:
+            task.stop()
+
+    async def update_power_status(self) -> PowerStatus:
+        self.power = await run_in_threadpool(
+            lambda: PowerStatus(value=self.instance.power.value, setpoint=self.instance.power.setpoint)
+        )
+        return self.power
+
+    async def update_full_status(self) -> StatusResponse:
+        self.status = await run_in_threadpool(
+            lambda: StatusResponse(
+                remote_control=self.instance.remote_control,
+                key_switch=self.instance.key_switch,
+                interlock=self.instance.interlock,
+                software_switch=self.instance.software_switch,
+                power=self.power,
+                temperature=self.instance.temperature,
+                current=self.instance.current,
+                mode=self.instance.mode.value if self.instance.mode else None,
+                alarms=self.instance.alarms,
+            )
+        )
+        return self.status
+
+    async def publish_power_updates(self):
+        if not self.power:
+            await self.update_power_status()
+        if self.power:
+            msg = MessageEnvelope(topic=self.serial, subtopic="power_update", payload=self.power.model_dump())
+            await self.publisher.broadcast(msg.topic, msg)
+
+    async def publish_full_status_updates(self):
+        if not self.status:
+            await self.update_full_status()
+        if self.status:
+            msg = MessageEnvelope(topic=self.serial, subtopic="full_status", payload=self.status.model_dump())
+            await self.publisher.broadcast(msg.topic, msg)
 
 
-# Global dictionary holding the discovered devices.
-DEVICES: dict[str, DeviceRecord] = {}
+class ApplicationState:
+    def __init__(self, publisher: PubSubHub):
+        self.publisher = pub_sub_hub
+        self.devices: dict[str, DeviceState] = {}
+        self.logger = logging.getLogger("app_state")
+
+    @property
+    def serials(self) -> list[str]:
+        return list(self.devices.keys())
+
+    def shutdown(self):
+        for device in self.devices.values():
+            device.shutdown()
+
+    def discover(self, mock: bool = False):
+        self.devices.clear()
+        try:
+            for serial in get_cohrhops_manager().discover():
+                instance = GenesisMX(serial)
+                device_state = DeviceState(instance, self.publisher)
+                device_state.run()
+                self.devices[serial] = device_state
+            self.logger.info(f"Discovered devices: {list(self.devices.keys())}")
+        except Exception as e:
+            self.logger.error(f"Discovery failed: {e}")
+            if mock:
+                self.logger.info("Using mock devices for testing.")
+                self.devices.update(self._generate_mock_devices())
+                for device in self.devices.values():
+                    device.run()
+
+    def get_device_instance(self, serial: str) -> GenesisMX | GenesisMXMock:
+        if serial not in self.devices:
+            raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found.")
+        return self.devices[serial].instance
+
+    def get_device_state(self, serial: str) -> DeviceState:
+        if serial not in self.devices:
+            raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found.")
+        return self.devices[serial]
+
+    def _generate_mock_devices(self, num: int = 3) -> dict[str, DeviceState]:
+        colors = ["RED", "GREEN", "BLUE"]
+        serials = [f"{colors[i % len(colors)]}-GENESIS-MX-MOCK-{i}" for i in range(num)]
+        return {serial: DeviceState(GenesisMXMock(serial), self.publisher) for serial in serials}
 
 
-def generate_mock_devices(num: int = 3) -> dict[str, DeviceRecord]:
-    """Generate a dictionary of mock devices for testing."""
-    colors = ["RED", "GREEN", "BLUE"]
-    serials = [f"{colors[i % len(colors)]}-GENESIS-MX-MOCK-{i}" for i in range(num)]
-    return {serial: DeviceRecord(GenesisMXMock(serial), wsManager()) for serial in serials}
+# ----------------------------------------------------------------------------------------------------------------------
 
 
-def run_discovery(mock: bool = False):
-    DEVICES.clear()
-    try:
-        for serial in get_cohrhops_manager().discover():
-            record = DeviceRecord(GenesisMX(serial), wsManager())
-            # Schedule the fast power cache update task.
-            record.cache_task = asyncio.create_task(update_power_cache(record))
-            DEVICES[serial] = record
-        logger.info(f"Discovered devices: {list(DEVICES.keys())}")
-    except Exception as e:
-        logger.error(f"Discovery failed: {e}")
-        if mock:
-            logger.info("Using mock devices for testing.")
-            DEVICES.update(generate_mock_devices())
-            # Start cache tasks for the mock devices.
-            for record in DEVICES.values():
-                record.cache_task = asyncio.create_task(update_power_cache(record))
+# initialize the global app state
+state = ApplicationState(pub_sub_hub)
 
 
-# -----------------------------------------------------------------------------
-# Lifespan: startup runs discovery; shutdown cancels any running tasks and
-# closes device resources.
-# -----------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: run discovery on the main thread (so that create_task is valid)
-    run_discovery()
+    state.discover()
     yield
-    # Shutdown: cancel publisher and cache tasks, and close device resources.
-    for record in DEVICES.values():
-        if record.fast_publisher_task is not None:
-            record.fast_publisher_task.cancel()
-            try:
-                await record.fast_publisher_task
-            except asyncio.CancelledError:
-                logger.info("Fast publisher task cancelled.")
-        if record.slow_publisher_task is not None:
-            record.slow_publisher_task.cancel()
-            try:
-                await record.slow_publisher_task
-            except asyncio.CancelledError:
-                logger.info("Slow publisher task cancelled.")
-        if record.cache_task is not None:
-            record.cache_task.cancel()
-            try:
-                await record.cache_task
-            except asyncio.CancelledError:
-                logger.info("Cache task cancelled.")
-        if hasattr(record.instance, "close"):
-            await run_in_threadpool(record.instance.close)
-    await run_in_threadpool(get_cohrhops_manager().close)
+    state.shutdown()
 
 
 app = FastAPI(title="Laser Control API", version="0.1", lifespan=lifespan)
@@ -173,84 +205,43 @@ app.add_middleware(
 )
 
 
-# -----------------------------------------------------------------------------
-# Dependency: Get a GenesisMX device for a given serial.
-# -----------------------------------------------------------------------------
-def get_device(serial: str) -> GenesisMX | GenesisMXMock:
-    try:
-        if serial not in DEVICES:
-            serials = get_cohrhops_manager().discover()
-            if serial not in serials:
-                raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found.")
-            record = DeviceRecord(GenesisMX(serial), wsManager())
-            record.cache_task = asyncio.create_task(update_power_cache(record))
-            DEVICES[serial] = record
-        return DEVICES[serial].instance
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found: {e}")
+# decorator to handle exceptions logging errors and returning 500
+@app.exception_handler(Exception)
+async def exception_handler(request, exc):
+    logger.error(f"Unhandled exception: {exc}")
+    return HTTPException(status_code=500, detail="Internal Server Error")
 
 
-# -----------------------------------------------------------------------------
-# Helper functions to get device status/power.
-# -----------------------------------------------------------------------------
-def get_device_status(serial: str) -> StatusResponse:
-    device = get_device(serial)
-    power = device.power
-    mode = device.mode
-    return StatusResponse(
-        remote_control=device.remote_control,
-        key_switch=device.key_switch,
-        interlock=device.interlock,
-        software_switch=device.software_switch,
-        power=PowerStatus(value=power.value, setpoint=power.setpoint),
-        temperature=device.temperature,
-        current=device.current,
-        mode=mode.value if mode else None,
-        alarms=device.alarms,
-    )
-
-
-def get_device_power(serial: str) -> PowerStatus:
-    device = get_device(serial)
-    power = device.power
-    return PowerStatus(value=power.value, setpoint=power.setpoint)
-
-
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # API Endpoints
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @app.post("/api/discover")
-async def discover_devices(mock: bool = False):
+async def discover_devices(mock: bool = False) -> list[str]:
     """Discover devices and return their serial numbers."""
-    run_discovery(mock)
-    return list(DEVICES.keys())
+    state.discover(mock)
+    return state.serials
 
 
 @app.get("/api/devices", response_model=list[str])
-async def list_devices(mock: bool = False):
+async def list_devices(mock: bool = False) -> list[str]:
     """List all available device serial numbers."""
-    if not DEVICES:
-        run_discovery(mock)
-    serials = list(DEVICES.keys())
-    if not serials:
+    if not state.serials:
+        state.discover(mock)
+    if not state.serials:
         raise HTTPException(status_code=404, detail="No devices discovered.")
-    return serials
+    return state.serials
 
 
 @app.get("/api/device/{serial}/status", response_model=StatusResponse)
 async def get_status(serial: str):
     """Retrieve a detailed status report from the device."""
-
-    def get_device_status_blocking():
-        return get_device_status(serial)
-
-    return await run_in_threadpool(get_device_status_blocking)
+    return await state.get_device_state(serial).update_full_status()
 
 
 @app.get("/api/device/{serial}/info", response_model=DeviceInfo)
 async def get_info(serial: str):
     """Retrieve device info."""
-    device = get_device(serial)
+    device = state.devices[serial].instance
     return DeviceInfo(
         serial=device.serial,
         wavelength=device.info.wavelength,
@@ -263,112 +254,51 @@ async def get_info(serial: str):
 @app.post("/api/device/{serial}/enable", response_model=StatusResponse)
 async def enable_device(serial: str):
     """Enable the device."""
-    device = get_device(serial)
-    await run_in_threadpool(device.enable)
+    await state.get_device_state(serial).enable()
     return await get_status(serial)
 
 
 @app.post("/api/device/{serial}/disable", response_model=StatusResponse)
 async def disable_device(serial: str):
     """Disable the device."""
-    device = get_device(serial)
-    await run_in_threadpool(device.disable)
+    await state.get_device_state(serial).disable()
     return await get_status(serial)
 
 
 @app.post("/api/device/{serial}/power", response_model=StatusResponse)
 async def set_power(serial: str, request: SetPowerRequest):
     """Set the power of the device."""
-    device = get_device(serial)
-    device.power = request.power
+    state.get_device_instance(serial).power = request.power
+    await state.get_device_state(serial).update_power_status()
     return await get_status(serial)
 
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # WebSocket endpoint
-#
-# When a client connects, we start two separate publisher tasks:
-# one for fast (power) updates and one for slow (full status) updates.
-# -----------------------------------------------------------------------------
-@app.websocket("/ws/device/{serial}")
-async def device_ws(websocket: WebSocket, serial: str):
-    # Ensure the device exists.
-    if serial not in DEVICES:
-        serials = get_cohrhops_manager().discover()
-        if serial not in serials:
-            raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found.")
-        DEVICES[serial] = DeviceRecord(GenesisMX(serial), wsManager())
-    record = DEVICES[serial]
-    ws_manager = record.socket
-
-    await ws_manager.connect(websocket)
-
-    # Start the fast publisher if not running.
-    if record.fast_publisher_task is None or record.fast_publisher_task.done():
-        record.fast_publisher_task = asyncio.create_task(fast_power_publisher(ws_manager, serial))
-    # Start the slow publisher if not running.
-    if record.slow_publisher_task is None or record.slow_publisher_task.done():
-        record.slow_publisher_task = asyncio.create_task(slow_full_status_publisher(ws_manager, serial))
-
+# ----------------------------------------------------------------------------------------------------------------------
+@app.websocket("/ws")
+async def shared_ws(websocket: WebSocket):
+    conn = await pub_sub_hub.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            # Expect subscription messages, e.g., {"subscribe": ["device123", "device456"], "unsubscribe": ["device789"]}
+            msg = await websocket.receive_json()
+            if "subscribe" in msg:
+                for topic in msg["subscribe"]:
+                    if topic not in conn.subscribed_topics:
+                        conn.subscribed_topics.append(topic)
+                        logger.info(f"Client subscribed to topic: {topic}")
+            if "unsubscribe" in msg:
+                for topic in msg["unsubscribe"]:
+                    if topic in conn.subscribed_topics:
+                        conn.subscribed_topics.remove(topic)
+                        logger.info(f"Client unsubscribed from topic: {topic}")
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for device {serial}.")
-        ws_manager.disconnect(websocket)
+        logger.info("Shared websocket disconnected.")
+        pub_sub_hub.disconnect(conn)
     except Exception as e:
-        logger.error(f"WebSocket error for device {serial}: {e}")
-        ws_manager.disconnect(websocket)
-
-
-# -----------------------------------------------------------------------------
-# Background task to update the power cache.
-#
-# This task polls the device at a set interval (e.g. every 0.25 seconds) and
-# updates the cached power value in the DeviceRecord.
-# -----------------------------------------------------------------------------
-async def update_power_cache(record: DeviceRecord, interval: float = 0.25):
-    while True:
-        try:
-            power = await run_in_threadpool(get_device_power, record.instance.serial)
-            record.cached_power = power
-        except Exception as e:
-            logger.error(f"Error updating power cache for device: {e}")
-        await asyncio.sleep(interval)
-
-
-# -----------------------------------------------------------------------------
-# Background task for fast power updates.
-#
-# This task sends power updates using the cached power at a high frequency.
-# -----------------------------------------------------------------------------
-async def fast_power_publisher(ws_manager: wsManager, serial: str):
-    while True:
-        if not ws_manager.active_connections:
-            logger.info(f"No active connections for device {serial} in fast publisher, stopping.")
-            break
-        power = DEVICES[serial].cached_power
-        if not power:
-            power = await run_in_threadpool(get_device_power, serial)
-        update = {"type": "power_update", "data": power.model_dump()}
-        await ws_manager.broadcast(update)
-        await asyncio.sleep(0.05)
-
-
-# -----------------------------------------------------------------------------
-# Background task for slow full status updates.
-#
-# This task sends full device status updates at a lower frequency.
-# -----------------------------------------------------------------------------
-async def slow_full_status_publisher(ws_manager: wsManager, serial: str):
-    while True:
-        if not ws_manager.active_connections:
-            logger.info(f"No active connections for device {serial} in slow publisher, stopping.")
-            break
-        status = await run_in_threadpool(get_device_status, serial)
-        update = {"type": "full_status", "data": status.model_dump()}
-        await ws_manager.broadcast(update)
-        await asyncio.sleep(5.0)
+        logger.error(f"Shared websocket error: {e}")
+        pub_sub_hub.disconnect(conn)
 
 
 # -----------------------------------------------------------------------------

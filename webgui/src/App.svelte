@@ -4,7 +4,7 @@
   import * as d3 from "d3";
   import { laserPowerChart } from "./powerChart.svelte";
   import { Laser, type Wavelength } from "./laser.svelte";
-  import DeliminatedInput from "./lib/DeliminatedInput.svelte";
+  import DeliminatedInput from "./lib/components/DeliminatedInput.svelte";
 
   const API_BASE: string = "http://localhost:8000/api";
   const MIN_POWER = 0;
@@ -25,7 +25,6 @@
 
   async function fetchLasers(): Promise<Laser[]> {
     untrack(() => {
-      lasers.forEach((laser) => laser.unsubscribe());
       lasers = [];
       loading = true;
     });
@@ -188,7 +187,7 @@
       </div>
     </div>
     <div class="power">
-      {#if laser.connected && laser.history.length > 1}
+      {#if laser.history.length > 1}
         <div class="chart-container">
           <svg
             use:laserPowerChart={{
@@ -262,28 +261,6 @@
             onChange={(value) => laser.setPower(value)}
           />
         </div>
-        <!-- <input
-          type="number"
-          data-serial={laser.serial}
-          min="0"
-          max={powerLimit}
-          step="1"
-          value={laser.power.setpoint}
-          disabled={!laser.status || laser.status.power.setpoint === null}
-          onchange={(e) => {
-            const target = e.target as HTMLInputElement;
-            const value = Math.min(
-              Math.max(parseFloat(target.value), parseInt(target.min)),
-              parseInt(target.max)
-            );
-            target.value = value.toString();
-            laser.setPower(value);
-          }}
-          onclick={(e) => {
-            const target = e.target as HTMLInputElement;
-            target && target.select();
-          }}
-        /> -->
       </div>
     </div>
   </div>
