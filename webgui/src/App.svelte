@@ -256,7 +256,7 @@
           <DeliminatedInput
             min={MIN_POWER}
             max={powerLimit}
-            step={1}
+            step={0.01}
             value={laser.power.setpoint}
             onChange={(value) => laser.setPower(value)}
           />

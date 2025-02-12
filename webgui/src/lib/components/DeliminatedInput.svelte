@@ -19,7 +19,7 @@
 
   function enforceDelimination(value: number) {
     if (min !== undefined) {
-      if (value < min) {
+      if (value <= min) {
         return min;
       } else if (step) {
         const distanceFromMin = value - min;
@@ -27,7 +27,7 @@
         value = min + numSteps * step;
       }
     }
-    if (max !== undefined && value > max) return max;
+    if (max !== undefined && value >= max) return max;
     return value;
   }
 
@@ -36,13 +36,14 @@
     let newValue = Number(target.value);
     if (isNaN(newValue)) return;
     newValue = enforceDelimination(newValue);
-    textInput.value = newValue.toString();
+    const decimalPlaces = step ? step.toString().split(".")[1]?.length || 0 : 0;
+    textInput.value = newValue.toFixed(decimalPlaces).toString();
     return newValue;
   }
 
   function handleValueChange(e: Event) {
     const newValue = updateValue(e);
-    onChange && newValue && onChange(newValue);
+    onChange && newValue !== undefined && onChange(newValue);
   }
 </script>
 

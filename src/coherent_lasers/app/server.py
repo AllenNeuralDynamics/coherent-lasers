@@ -17,8 +17,6 @@ from .messaging import MessageEnvelope, PeriodicTask, PubSubHub, WebSocketHub
 logger = logging.getLogger("laser_api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-pub_sub_hub = WebSocketHub()
-
 
 # -----------------------------------------------------------------------------
 # Pydantic models for request/response data.
@@ -56,8 +54,8 @@ class StatusResponse(BaseModel):
 # State management classes: DeviceState and ApplicationState.
 # ----------------------------------------------------------------------------------------------------------------------
 class DeviceState:
-    FAST_POLL_INTERVAL = 0.15
-    SLOW_POLL_INTERVAL = 5.0
+    FAST_POLL_INTERVAL = 0.09
+    SLOW_POLL_INTERVAL = 2.5
     FAST_PUBLISH_INTERVAL = 0.0333
     SLOW_PUBLISH_INTERVAL = 5.0
 
@@ -78,12 +76,27 @@ class DeviceState:
         return self.instance.serial
 
     async def enable(self):
-        await run_in_threadpool(self.instance.enable)
-        await self.update_power_status()
+        def enable():
+            self.instance.enable()
+            return PowerStatus(value=self.instance.power.value, setpoint=self.instance.power.setpoint)
+
+        self.power = await run_in_threadpool(enable)
 
     async def disable(self):
-        await run_in_threadpool(self.instance.disable)
-        await self.update_power_status()
+        def disable():
+            self.instance.disable()
+            return PowerStatus(value=self.instance.power.value, setpoint=self.instance.power.setpoint)
+
+        self.power = await run_in_threadpool(disable)
+
+    async def set_power(self, power: float):
+        def set_power():
+            self.instance.power = power
+            return PowerStatus(value=self.instance.power.value, setpoint=self.instance.power.setpoint)  # type: ignore
+
+        return await run_in_threadpool(set_power)
+        # return self.power
+        # await run_in_threadpool(set_power)
 
     def run(self):
         for task in self.periodic_tasks:
@@ -100,7 +113,7 @@ class DeviceState:
         return self.power
 
     async def update_full_status(self) -> StatusResponse:
-        self.status = await run_in_threadpool(
+        status = await run_in_threadpool(
             lambda: StatusResponse(
                 remote_control=self.instance.remote_control,
                 key_switch=self.instance.key_switch,
@@ -113,6 +126,8 @@ class DeviceState:
                 alarms=self.instance.alarms,
             )
         )
+        status.power = self.power
+        self.status = status
         return self.status
 
     async def publish_power_updates(self):
@@ -132,7 +147,7 @@ class DeviceState:
 
 class ApplicationState:
     def __init__(self, publisher: PubSubHub):
-        self.publisher = pub_sub_hub
+        self.publisher = publisher
         self.devices: dict[str, DeviceState] = {}
         self.logger = logging.getLogger("app_state")
 
@@ -166,7 +181,7 @@ class ApplicationState:
             raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found.")
         return self.devices[serial].instance
 
-    def get_device_state(self, serial: str) -> DeviceState:
+    def get_device(self, serial: str) -> DeviceState:
         if serial not in self.devices:
             raise HTTPException(status_code=404, detail=f"Device with serial {serial} not found.")
         return self.devices[serial]
@@ -181,7 +196,7 @@ class ApplicationState:
 
 
 # initialize the global app state
-state = ApplicationState(pub_sub_hub)
+state = ApplicationState(publisher=WebSocketHub())
 
 
 @asynccontextmanager
@@ -236,7 +251,7 @@ async def list_devices(mock: bool = False) -> list[str]:
 @app.get("/api/device/{serial}/status", response_model=StatusResponse)
 async def get_status(serial: str):
     """Retrieve a detailed status report from the device."""
-    return await state.get_device_state(serial).update_full_status()
+    return await state.get_device(serial).update_full_status()
 
 
 @app.get("/api/device/{serial}/info", response_model=DeviceInfo)
@@ -255,23 +270,21 @@ async def get_info(serial: str):
 @app.post("/api/device/{serial}/enable", response_model=StatusResponse)
 async def enable_device(serial: str):
     """Enable the device."""
-    await state.get_device_state(serial).enable()
+    await state.get_device(serial).enable()
     return await get_status(serial)
 
 
 @app.post("/api/device/{serial}/disable", response_model=StatusResponse)
 async def disable_device(serial: str):
     """Disable the device."""
-    await state.get_device_state(serial).disable()
+    await state.get_device(serial).disable()
     return await get_status(serial)
 
 
-@app.post("/api/device/{serial}/power", response_model=StatusResponse)
+@app.post("/api/device/{serial}/power", response_model=PowerStatus)
 async def set_power(serial: str, request: SetPowerRequest):
     """Set the power of the device."""
-    state.get_device_instance(serial).power = request.power
-    await state.get_device_state(serial).update_power_status()
-    return await get_status(serial)
+    return await state.get_device(serial).set_power(request.power)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -279,7 +292,7 @@ async def set_power(serial: str, request: SetPowerRequest):
 # ----------------------------------------------------------------------------------------------------------------------
 @app.websocket("/ws")
 async def shared_ws(websocket: WebSocket):
-    conn = await pub_sub_hub.connect(websocket)
+    conn = await state.publisher.connect(websocket)
     try:
         while True:
             # Expect subscription messages, e.g., {"subscribe": ["device123", "device456"], "unsubscribe": ["device789"]}
@@ -296,10 +309,10 @@ async def shared_ws(websocket: WebSocket):
                         logger.info(f"Client unsubscribed from topic: {topic}")
     except WebSocketDisconnect:
         logger.info("Shared websocket disconnected.")
-        pub_sub_hub.disconnect(conn)
+        state.publisher.disconnect(conn)
     except Exception as e:
         logger.error(f"Shared websocket error: {e}")
-        pub_sub_hub.disconnect(conn)
+        state.publisher.disconnect(conn)
 
 
 # -----------------------------------------------------------------------------
