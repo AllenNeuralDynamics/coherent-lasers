@@ -9,10 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Import your GenesisMX class and HOPS manager factory.
-from coherent_lasers.genesis_mx import GenesisMX
-from coherent_lasers.genesis_mx.app.messaging import MessageEnvelope, PeriodicTask, PubSubHub, WebSocketHub
+from coherent_lasers.genesis_mx import GenesisMX, GenesisMXMock
 from coherent_lasers.genesis_mx.hops import get_cohrhops_manager
-from coherent_lasers.genesis_mx.mock import GenesisMXMock
+
+from .messaging import MessageEnvelope, PeriodicTask, PubSubHub, WebSocketHub
 
 logger = logging.getLogger("laser_api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -198,6 +198,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:4173",
         "http://127.0.0.1:8000",
+        "http://0.0.0.0:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],

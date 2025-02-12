@@ -14,8 +14,7 @@ Commands:
 
 import click
 import logging
-from coherent_lasers.genesis_mx.driver import GenesisMX
-from ..commands import OperationMode, ReadCmd
+from coherent_lasers.genesis_mx import GenesisMX, OperationMode, ReadCmd
 from coherent_lasers.genesis_mx.hops import HOPSException, get_cohrhops_manager
 
 # Setup logging

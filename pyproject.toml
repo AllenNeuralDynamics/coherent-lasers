@@ -37,12 +37,12 @@ include-package-data = true
 py-modules = []
 
 [project.scripts]
-genesis-mx = "coherent_lasers.genesis_mx.app.server:run"
-genesis-mx-cli = "coherent_lasers.genesis_mx.app.cli:cli"
+genesis-mx = "coherent_lasers.app.server:run"
+genesis-mx-cli = "coherent_lasers.app.cli:cli"
 
 [tool.setuptools.package-data]
 "coherent_lasers.genesis_mx.hops" = ["CohrFTCI2C.dll", "CohrHOPS.dll"]
-"coherent_lasers.genesis_mx.app.frontend" = ["build/*"]
+"coherent_lasers.app.frontend" = ["build/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
